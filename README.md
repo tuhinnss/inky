@@ -28,3 +28,22 @@ npm run dev
 | `npm test`        | Run the unit tests once            |
 | `npm run lint`    | Lint the source                    |
 | `npm run format`  | Format the source with Prettier    |
+
+## Model attribution
+
+Symbols are recognised by a pre-trained convolutional network that ships with the app. We did not
+train it.
+
+|              |                                                                                                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Model        | `cnn_aug` from [altynbk/handwritten-math-recognition](https://github.com/altynbk/handwritten-math-recognition), commit `3d91c0c`                                |
+| Licence      | MIT, copyright Altynbek Kabiyev. Full text in [public/models/LICENSE.txt](public/models/LICENSE.txt)                                                            |
+| Architecture | 4 × (3×3 convolution, batch normalisation, 2×2 max-pool) with 32, 64, 128 and 256 filters, then global average pooling and a 15-way softmax. 393,615 parameters |
+| Input        | One symbol as a 64×64 greyscale image                                                                                                                           |
+| Output       | Probabilities for `0`–`9`, `+`, `−`, `×`, `÷` and `=`. The decimal point is identified from stroke geometry                                                     |
+| Bundled file | [public/models/symbol-classifier.onnx](public/models/symbol-classifier.onnx), 1.54 MB: the upstream weights converted from Keras to ONNX, unchanged             |
+| Accuracy     | 99.44% on the upstream held-out test set (1,599 of 1,608), reproduced by us after conversion                                                                    |
+
+Why this model, what else we evaluated, and a note on the provenance of its training data are in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#1-model-selection). The conversion and benchmark
+scripts are in [scripts/model](scripts/model).
