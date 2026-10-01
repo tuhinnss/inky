@@ -1,0 +1,12 @@
+export { EditBuilder, History, StrokeEdit, type Command } from './history';
+export { StrokeStore, type StrokeChange, type StrokeListener } from './StrokeStore';
+export {
+  boundsIntersect,
+  createStroke,
+  inkBounds,
+  strokeBounds,
+  unionBounds,
+  type Bounds,
+  type Point,
+  type Stroke,
+} from './types';
