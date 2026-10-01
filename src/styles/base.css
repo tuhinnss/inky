@@ -1,3 +1,21 @@
+:root {
+  /* A maths notebook page: cool white paper, pale blue squares, a pink margin rule. */
+  --paper: #fafbf7;
+  --rule: #cfe0ea;
+  --margin-rule: #e8798c;
+
+  /* What you write is ink. What the notebook works out is pencil. */
+  --ink: #1c2b6e;
+  --graphite: #4a4e57;
+  --highlighter: #ffe566;
+
+  --grid: 28px;
+  --margin-width: 64px;
+  --hand: 'Kalam', 'Segoe Print', 'Bradley Hand', cursive;
+
+  color-scheme: light;
+}
+
 *,
 *::before,
 *::after {
@@ -17,10 +35,27 @@ body {
     'Segoe UI',
     Roboto,
     sans-serif;
+  color: var(--ink);
+  background: var(--paper);
   /* The page is a writing surface: no rubber-banding, no pull-to-refresh. */
   overscroll-behavior: none;
+  overflow: hidden;
 }
 
 #app {
   height: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }

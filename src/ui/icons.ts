@@ -1,0 +1,25 @@
+/**
+ * Toolbar icons as inline SVG, so they need no network request and inherit the text
+ * colour. All share one 24×24 grid and one stroke weight.
+ */
+
+const svg = (body: string): string =>
+  `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+
+export const icons = {
+  pen: svg(
+    '<path d="M4 20l1.2-4.6L16.4 4.2a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8L8.6 18.8 4 20z"/><path d="M14.5 6.1l3.4 3.4"/>',
+  ),
+  /** Removes a whole stroke at once: a pen stroke, struck through. */
+  strokeEraser: svg('<path d="M3 14.5c3-7 6-7 9 0s6 7 9 0"/><path d="M5.5 4.5l13 15"/>'),
+  /** Eraser rubbing out part of a line: the line has a gap. */
+  pixelEraser: svg(
+    '<path d="M3 20h4"/><path d="M17 20h4"/><path d="M9.2 16.8l-3-3a1.5 1.5 0 0 1 0-2.1l6.5-6.5a1.5 1.5 0 0 1 2.1 0l4 4a1.5 1.5 0 0 1 0 2.1l-5.5 5.5H9.2z"/><path d="M9.5 8.9l5.6 5.6"/>',
+  ),
+  undo: svg('<path d="M8 6L4 10l4 4"/><path d="M4 10h9.5a5.5 5.5 0 0 1 0 11H10"/>'),
+  redo: svg('<path d="M16 6l4 4-4 4"/><path d="M20 10h-9.5a5.5 5.5 0 0 0 0 11H14"/>'),
+  /** A fresh sheet: the page with its corner turned. */
+  clear: svg(
+    '<path d="M6 3h8l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/>',
+  ),
+} as const;
