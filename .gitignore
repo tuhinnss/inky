@@ -11,3 +11,8 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .claude/
+
+# Local clones used by scripts/model/*.py
+candidates/
+.venv/
+__pycache__/
