@@ -1,3 +1,4 @@
+export { eraseFromStroke, strokeIsHit } from './eraser';
 export { EditBuilder, History, StrokeEdit, type Command } from './history';
 export { StrokeStore, type StrokeChange, type StrokeListener } from './StrokeStore';
 export {
