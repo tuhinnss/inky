@@ -121,5 +121,5 @@ export function eraseFromStroke(
   //    worse, could later be mistaken for decimal points.
   return fragments
     .filter((fragment) => pathLength(fragment) >= stroke.width)
-    .map((fragment) => createStroke(fragment, stroke.width, stroke.color));
+    .map((fragment) => createStroke(fragment, stroke.width, stroke.color, stroke.simulatePressure));
 }

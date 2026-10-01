@@ -18,6 +18,11 @@ export interface Stroke {
   /** Pen width in CSS pixels. */
   readonly width: number;
   readonly color: string;
+  /**
+   * True when the input device reported no real pressure (mouse, most touchscreens).
+   * The renderer then varies the line width with drawing speed instead.
+   */
+  readonly simulatePressure: boolean;
 }
 
 export interface Bounds {
@@ -29,8 +34,13 @@ export interface Bounds {
 
 let nextStrokeId = 1;
 
-export function createStroke(points: readonly Point[], width: number, color: string): Stroke {
-  return { id: nextStrokeId++, points, width, color };
+export function createStroke(
+  points: readonly Point[],
+  width: number,
+  color: string,
+  simulatePressure = true,
+): Stroke {
+  return { id: nextStrokeId++, points, width, color, simulatePressure };
 }
 
 /** Bounding box of a stroke's centreline, grown by `padding` on every side. */
