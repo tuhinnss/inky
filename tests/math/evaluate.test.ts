@@ -235,6 +235,15 @@ describe('malformed input', () => {
     expect(value(Array(terms).fill('1').join('+'))).toBe(terms);
   });
 
+  it('says which operator is missing its number', () => {
+    expect(evaluate('18+4×=')).toMatchObject({
+      status: 'error',
+      error: { code: 'unexpected-end', message: '"×" needs a number after it' },
+    });
+    expect(evaluate('5-=')).toMatchObject({ error: { message: '"−" needs a number after it' } });
+    expect(evaluate('3++2')).toMatchObject({ error: { message: '"+" needs a number before it' } });
+  });
+
   it('reports where the problem is', () => {
     expect(evaluate('12+×3')).toMatchObject({ status: 'error', error: { position: 3 } });
     expect(evaluate('12+')).toMatchObject({ status: 'error', error: { position: 3 } });

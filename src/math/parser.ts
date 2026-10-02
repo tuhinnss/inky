@@ -99,10 +99,13 @@ class Parser {
     const token = this.peek();
 
     if (!token) {
+      const previous = this.tokens[this.index - 1];
       this.fail(
         'unexpected-end',
         this.endPosition,
-        'The expression is missing a number at the end',
+        previous?.kind === 'operator'
+          ? `"${previous.operator === '-' ? '−' : previous.operator}" needs a number after it`
+          : 'A number is missing here',
       );
     }
 
