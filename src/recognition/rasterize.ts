@@ -85,17 +85,19 @@ export function frameFor(strokes: readonly RasterStroke[]): Frame {
  * 0 well outside, and a one-pixel ramp across the edge. That ramp is the anti-aliasing.
  * Overlapping segments keep the larger value, so joints and crossings do not get darker
  * than the rest of the line.
+ *
+ * @param size the image is `size` by `size` pixels, starting at `base` in `out`.
  */
-function drawSegment(
+export function drawSegment(
   out: Float32Array,
   base: number,
+  size: number,
   ax: number,
   ay: number,
   bx: number,
   by: number,
   radius: number,
 ): void {
-  const size = MODEL.size;
   const reach = radius + 1;
   const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - reach));
   const x1 = Math.min(size - 1, Math.ceil(Math.max(ax, bx) + reach));
@@ -143,11 +145,11 @@ export function rasterizeSymbol(
     const points = coords.length >> 1;
     let px = coords[0] * scale + offsetX;
     let py = coords[1] * scale + offsetY;
-    if (points === 1) drawSegment(out, offset, px, py, px, py, radius);
+    if (points === 1) drawSegment(out, offset, size, px, py, px, py, radius);
     for (let i = 1; i < points; i++) {
       const x = coords[2 * i] * scale + offsetX;
       const y = coords[2 * i + 1] * scale + offsetY;
-      drawSegment(out, offset, px, py, x, y, radius);
+      drawSegment(out, offset, size, px, py, x, y, radius);
       px = x;
       py = y;
     }
