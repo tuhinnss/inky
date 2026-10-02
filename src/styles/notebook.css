@@ -106,6 +106,7 @@
   writing-mode: vertical-rl;
   transform: rotate(180deg);
   font-family: var(--hand);
+  font-weight: 300;
   font-size: 18px;
   letter-spacing: 0.02em;
   color: color-mix(in srgb, var(--graphite) 70%, transparent);
@@ -143,6 +144,7 @@
   left: calc(var(--grid) * 2);
   margin: 0;
   font-family: var(--hand);
+  font-weight: 300;
   font-size: 30px;
   line-height: var(--grid);
   color: color-mix(in srgb, var(--graphite) 62%, transparent);
@@ -158,6 +160,21 @@
 
 .notebook[data-empty='false'] .hint {
   opacity: 0;
+}
+
+/* Something went wrong that the user should know about. Pencilled at the foot of the page. */
+.notice {
+  position: absolute;
+  left: calc(var(--grid) * 2);
+  right: var(--grid);
+  bottom: var(--grid);
+  margin: 0;
+  font-family: var(--hand);
+  font-weight: 300;
+  font-size: 20px;
+  line-height: var(--grid);
+  color: var(--graphite);
+  pointer-events: none;
 }
 
 /* ------------------------------------------------- narrow screens: margin below */

@@ -1,6 +1,10 @@
 import { InkCanvas, type Tool } from '../canvas/InkCanvas';
 import { History, StrokeEdit, StrokeStore } from '../ink';
+import { RecognitionClient } from '../recognition/RecognitionClient';
+import { AnswerOverlay } from '../ui/AnswerOverlay';
 import { PEN_WIDTHS, Toolbar } from '../ui/Toolbar';
+import type { Equation } from './equations';
+import { RecognitionPipeline, type PipelineStats } from './RecognitionPipeline';
 
 const INK_COLOR = '#1c2b6e';
 const ERASER_RADIUS = 11;
@@ -10,9 +14,16 @@ export class App {
   readonly store = new StrokeStore();
   readonly history = new History(this.store);
   readonly canvas: InkCanvas;
+  /** What the notebook currently reads on the page. Exposed for tests and debugging. */
+  equations: readonly Equation[] = [];
+  stats: PipelineStats | undefined;
 
   private readonly notebook: HTMLElement;
   private readonly toolbar: Toolbar;
+  private readonly notice: HTMLElement;
+  private readonly recognition: RecognitionClient;
+  private readonly pipeline: RecognitionPipeline;
+  private readonly overlay: AnswerOverlay;
   private readonly cleanup: Array<() => void> = [];
 
   private tool: Tool = 'pen';
@@ -41,7 +52,11 @@ export class App {
     const hint = document.createElement('p');
     hint.className = 'hint';
     hint.innerHTML = 'Write a sum, then finish it with =<small>18 + 4 × 3 =</small>';
-    page.append(hint);
+    this.notice = document.createElement('p');
+    this.notice.className = 'notice';
+    this.notice.setAttribute('role', 'status');
+    this.notice.hidden = true;
+    page.append(hint, this.notice);
 
     this.notebook.append(this.toolbar.element, page);
     root.append(this.notebook);
@@ -53,10 +68,30 @@ export class App {
     });
     this.canvas.setTool(this.tool);
 
+    this.overlay = new AnswerOverlay(this.canvas.overlay);
+    this.recognition = new RecognitionClient();
+    this.pipeline = new RecognitionPipeline(this.store, this.recognition, {
+      onUpdate: (equations) => {
+        this.equations = equations;
+        this.overlay.setEquations(equations);
+      },
+      onStats: (stats) => (this.stats = stats),
+      onError: (error) => this.showNotice(`Could not read the page: ${error.message}`),
+    });
+    this.recognition.ready.catch((error: Error) =>
+      this.showNotice(`Handwriting recognition could not start: ${error.message}`),
+    );
+
     this.cleanup.push(
       this.store.subscribe(() => this.refresh()),
       this.history.subscribe(() => this.refresh()),
+      this.canvas.onActivity((active) => this.pipeline.setPenDown(active)),
+      this.canvas.onResized(() => this.overlay.redraw()),
     );
+
+    // Canvas text does not wait for web fonts. Answers drawn before Kalam has loaded
+    // would use the fallback face, so redraw once it arrives.
+    void document.fonts.load('300 32px Kalam').then(() => this.overlay.redraw());
 
     const onKeyDown = (event: KeyboardEvent): void => this.onKeyDown(event);
     window.addEventListener('keydown', onKeyDown);
@@ -68,9 +103,17 @@ export class App {
   destroy(): void {
     for (const dispose of this.cleanup) dispose();
     this.cleanup.length = 0;
+    this.pipeline.dispose();
+    this.recognition.dispose();
+    this.overlay.destroy();
     this.canvas.destroy();
     this.toolbar.destroy();
     this.notebook.remove();
+  }
+
+  private showNotice(message: string): void {
+    this.notice.textContent = message;
+    this.notice.hidden = false;
   }
 
   private setTool(tool: Tool): void {
