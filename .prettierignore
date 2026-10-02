@@ -1,4 +1,6 @@
 dist
+dist-capture
+captures
 dev-dist
 coverage
 node_modules

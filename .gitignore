@@ -1,6 +1,11 @@
 node_modules/
 dist/
+dist-capture/
 dev-dist/
+
+# Handwriting saved by "Report a misread" (npm run capture). Kept off the repo until
+# a page is deliberately turned into a test fixture.
+captures/
 coverage/
 *.local
 .env

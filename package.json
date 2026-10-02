@@ -12,6 +12,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "capture": "vite build --mode capture --outDir dist-capture && vite preview --mode capture --outDir dist-capture --host --port 5185 --strictPort",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

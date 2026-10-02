@@ -587,7 +587,7 @@ What makes that hold:
 
 ## 9. Tests
 
-366 tests in 16 files, run with Vitest in Node. `npm test` takes about two seconds.
+388 tests in 17 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area              | Tests | What is covered                                                                                                                                                           |
 | ----------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -601,6 +601,7 @@ What makes that hold:
 | Pipeline          | 50    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol                                                                                      |
 | Answer overlay    | 12    | What is written after the "=", how dark, and that the doubt mark fits inside the write-on reveal and on the page                                                          |
 | Tool sizes        | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                          |
+| Page snapshots    | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                          |
 
 Two choices are worth noting. Layout and recognition are tested with **synthetic handwriting**: a
 fixture that turns a string such as `7.5÷2-60=` into stroke paths with controllable size, spacing

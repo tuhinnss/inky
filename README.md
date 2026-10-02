@@ -107,10 +107,22 @@ scripts are in [scripts/model](scripts/model).
 | `npm run dev`       | Start the dev server                               |
 | `npm run build`     | Type-check, then build to `dist/`                  |
 | `npm run preview`   | Serve the production build locally                 |
-| `npm test`          | Run the 366 unit and integration tests once        |
+| `npm test`          | Run the 388 unit and integration tests once        |
 | `npm run typecheck` | Type-check without building                        |
 | `npm run lint`      | Lint the source. Fails on `eval` or `new Function` |
 | `npm run format`    | Format the source with Prettier                    |
+| `npm run capture`   | Serve a build that can save handwriting (below)    |
+
+### Collecting real handwriting
+
+`npm run capture` serves a special build on the local network, on port 5185. Open it on a tablet
+on the same network and it shows one extra button, **Report a misread**. Pressing it asks what
+the page was meant to say, then saves the ink, what was read and that answer as a JSON file in
+`captures/` on the development machine. A saved page can be replayed through layout and
+recognition exactly, which is how a misread becomes a regression test.
+
+This is a development aid. The button and the code behind it are not in the production build,
+and the app itself never sends anything anywhere.
 
 ## Project layout
 
@@ -123,9 +135,11 @@ src/
   math/          tokenizer, parser, evaluator, number formatting
   app/           the pipeline connecting the stages; scheduling; app shell
   ui/            toolbar, answer overlay
+  dev/           saving a page of handwriting for study (not in the production build)
   styles/        the notebook page
 public/models/   the ONNX model and its licence
 scripts/model/   model conversion and benchmark scripts (Python; not needed to run the app)
+scripts/dev/     the dev-server route that receives saved pages
 tests/           mirrors src/, plus synthetic-handwriting fixtures
 docs/            architecture document, problem statement
 ```
