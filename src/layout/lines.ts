@@ -1,5 +1,5 @@
-import type { Stroke } from '../ink';
-import { measure, type StrokeMetrics } from './metrics';
+import { unionBounds, type Bounds, type Stroke } from '../ink';
+import { lineHeight, measure, type StrokeMetrics } from './metrics';
 
 /** Strokes this small (in CSS px) still get a usable vertical band and reach. */
 const MIN_REACH = 20;
@@ -76,9 +76,58 @@ export function groupIntoLines(strokes: readonly Stroke[]): Stroke[][] {
     else groups.set(root, [metrics[i]]);
   }
 
-  const top = (group: StrokeMetrics[]): number => Math.min(...group.map((m) => m.minY));
-  const left = (group: StrokeMetrics[]): number => Math.min(...group.map((m) => m.minX));
-  return [...groups.values()]
-    .sort((a, b) => top(a) - top(b) || left(a) - left(b))
-    .map((group) => group.map((m) => m.stroke));
+  return joinFragments([...groups.values()].map(toCluster))
+    .sort((a, b) => a.minY - b.minY || a.minX - b.minX)
+    .map((cluster) => cluster.members.map((m) => m.stroke));
+}
+
+/** A group of strokes together with the measurements the second pass needs. */
+interface Cluster extends Bounds {
+  members: StrokeMetrics[];
+  /** Height of a typical digit in the group. */
+  height: number;
+}
+
+function toCluster(members: StrokeMetrics[]): Cluster {
+  return {
+    members,
+    height: lineHeight(members),
+    ...members.map((m): Bounds => m).reduce(unionBounds),
+  };
+}
+
+/**
+ * Second pass: rejoins pieces of a line that the stroke-by-stroke pass left apart.
+ *
+ * The first pass judges the gap between two strokes by those strokes' own size. That
+ * fails for two short symbols with a wide gap between them, which is exactly what is
+ * left when a digit is erased from "4 × 3 =": the "×" and the "=" are both small, and
+ * the hole where the 3 was is wider than either. Here the gap is judged against the
+ * height of the line instead, which the first pass has by now established.
+ */
+function joinFragments(clusters: Cluster[]): Cluster[] {
+  for (let merged = true; merged;) {
+    merged = false;
+    outer: for (let i = 0; i < clusters.length; i++) {
+      for (let j = i + 1; j < clusters.length; j++) {
+        if (!sameRow(clusters[i], clusters[j])) continue;
+        clusters[i] = toCluster([...clusters[i].members, ...clusters[j].members]);
+        clusters.splice(j, 1);
+        merged = true;
+        break outer;
+      }
+    }
+  }
+  return clusters;
+}
+
+function sameRow(a: Cluster, b: Cluster): boolean {
+  const [large, small] = a.height >= b.height ? [a, b] : [b, a];
+
+  const gap = Math.max(a.minX, b.minX) - Math.min(a.maxX, b.maxX);
+  if (gap > MAX_GAP * large.height) return false;
+
+  const centre = (small.minY + small.maxY) / 2;
+  const tolerance = BAND_TOLERANCE * large.height;
+  return centre >= large.minY - tolerance && centre <= large.maxY + tolerance;
 }

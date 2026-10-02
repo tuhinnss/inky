@@ -8,5 +8,5 @@ export function layoutPage(strokes: readonly Stroke[]): Line[] {
 }
 
 export { groupIntoLines } from './lines';
-export { isFlat, measure, type StrokeMetrics } from './metrics';
-export { lineHeight, segmentLine, type Line, type SymbolGroup } from './symbols';
+export { isFlat, lineHeight, measure, type StrokeMetrics } from './metrics';
+export { segmentLine, type Line, type SymbolGroup } from './symbols';

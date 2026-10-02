@@ -37,6 +37,19 @@ export function isFlat(metrics: StrokeMetrics): boolean {
   return metrics.width > 0 && metrics.height <= 0.3 * metrics.width;
 }
 
+/**
+ * The height of a typical digit among these strokes: the median height of the taller
+ * ones. Operators and dots are short, so the lower half is ignored rather than averaged
+ * in. This is the yardstick every other layout distance is measured against.
+ */
+export function lineHeight(metrics: readonly StrokeMetrics[]): number {
+  const tallest = Math.max(...metrics.map((m) => m.height));
+  const tall = metrics.filter((m) => m.height >= 0.5 * tallest).map((m) => m.height);
+  const height = median(tall);
+  // A group of only flat strokes ("- =") has no height to speak of; use its widths.
+  return height > 0 ? height : Math.max(...metrics.map((m) => m.width), 1);
+}
+
 export function median(values: readonly number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);

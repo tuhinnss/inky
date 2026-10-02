@@ -1,5 +1,5 @@
 import { unionBounds, type Bounds, type Stroke } from '../ink';
-import { isFlat, measure, median, type StrokeMetrics } from './metrics';
+import { isFlat, lineHeight, measure, type StrokeMetrics } from './metrics';
 
 /** One handwritten symbol: the strokes that make it up, and where it is. */
 export interface SymbolGroup {
@@ -33,18 +33,6 @@ const DOT_SIZE = 0.22;
 const MIN_WIDTH = 0.1;
 /** Two strokes are one symbol when they share this much of the narrower one's width. */
 const OVERLAP = 0.4;
-
-/**
- * The height of a typical digit on the line: the median height of its taller strokes.
- * Operators and dots are short, so the lower half is ignored rather than averaged in.
- */
-export function lineHeight(metrics: readonly StrokeMetrics[]): number {
-  const tallest = Math.max(...metrics.map((m) => m.height));
-  const tall = metrics.filter((m) => m.height >= 0.5 * tallest).map((m) => m.height);
-  const height = median(tall);
-  // A line of only flat strokes ("- =") has no height to speak of; use its widths.
-  return height > 0 ? height : Math.max(...metrics.map((m) => m.width), 1);
-}
 
 interface Group {
   members: StrokeMetrics[];

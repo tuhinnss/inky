@@ -234,6 +234,23 @@ describe('grouping strokes into lines', () => {
 });
 
 describe('layout after editing', () => {
+  it('keeps the line whole when a digit is erased from between two operators', () => {
+    // "4×3=" without its 3: the "×" and "=" are both short, and the hole between them
+    // is wider than either. They must still be read as one line, "4×=".
+    const written = ink('18+4×3=', { size: 90 });
+    const withoutThree = written.filter((symbol) => symbol.char !== '3');
+    const lines = layoutPage(strokesOf(withoutThree));
+
+    expect(lines).toHaveLength(1);
+    expect(grouping(lines[0])).toEqual(expected(withoutThree));
+  });
+
+  it('still separates side-by-side equations after that second pass', () => {
+    const left = ink('4×=', { x: 0, y: 0, size: 60 });
+    const right = ink('=', { x: 400, y: 0, size: 60 });
+    expect(layoutPage([...strokesOf(left), ...strokesOf(right)])).toHaveLength(2);
+  });
+
   it('drops a symbol when its strokes are erased', () => {
     const written = ink('18+4×3=', { size: 80 });
     const withoutFour = written.filter((symbol) => symbol.char !== '4');
