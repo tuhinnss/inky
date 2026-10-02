@@ -12,6 +12,9 @@ const font = (size: number): string => FONT.replace('{size}', String(size));
 export const LOW_CONFIDENCE = 0.6;
 /** How long an answer takes to be pencilled in. */
 const WRITE_MS = 260;
+/** The "?" after a doubtful answer: its size and the gap before it, relative to the answer. */
+const MARK_SCALE = 0.55;
+const MARK_GAP = 0.12;
 
 interface Shown {
   text: string;
@@ -130,39 +133,50 @@ export class AnswerOverlay {
 
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    ctx.font = font(size);
-    let width = ctx.measureText(text).width;
+
+    // A doubtful answer is followed by a small "?". It is part of what is written, so it
+    // counts towards the room the answer needs and towards what the animation reveals.
+    const doubtful = isNumber && equation.confidence < LOW_CONFIDENCE;
+    const measure = (): { width: number; extent: number } => {
+      let mark = 0;
+      if (doubtful) {
+        ctx.font = font(size * MARK_SCALE);
+        mark = size * MARK_GAP + ctx.measureText('?').width;
+      }
+      ctx.font = font(size);
+      const width = ctx.measureText(text).width;
+      return { width, extent: width + mark };
+    };
+    let { width, extent } = measure();
 
     // Running off the right edge: first write smaller, then drop below the line.
     const room = this.layer.width - x - 10;
-    if (width > room) {
-      const fitted = Math.max(size * 0.55, (size * room) / width);
-      if ((width * fitted) / size <= room) {
+    if (extent > room) {
+      const fitted = Math.max(size * 0.55, (size * room) / extent);
+      if ((extent * fitted) / size <= room) {
         size = fitted;
       } else {
         size *= 0.7;
-        x = Math.max(8, Math.min(x, this.layer.width - width * 0.7 - 10));
+        x = Math.max(8, Math.min(x, this.layer.width - extent * 0.7 - 10));
         y = line.bounds.maxY + size * 0.75;
       }
-      ctx.font = font(size);
-      width = ctx.measureText(text).width;
+      ({ width, extent } = measure());
     }
 
     ctx.save();
     // The write-on effect: reveal the text from left to right, easing out.
     const eased = 1 - (1 - progress) ** 3;
     ctx.beginPath();
-    ctx.rect(x - size * 0.2, y - size, (width + size * 0.4) * eased, size * 2);
+    ctx.rect(x - size * 0.2, y - size, (extent + size * 0.4) * eased, size * 2);
     ctx.clip();
 
-    const doubtful = equation.confidence < LOW_CONFIDENCE;
     ctx.fillStyle = `rgba(${GRAPHITE}, ${isNumber ? answerOpacity(equation.confidence) : 0.78})`;
     // Kalam's digits sit a little above the middle of its line box.
     ctx.fillText(text, x, y + size * 0.06);
 
-    if (isNumber && doubtful) {
-      ctx.font = font(size * 0.55);
-      ctx.fillText('?', x + width + size * 0.12, y - size * 0.18);
+    if (doubtful) {
+      ctx.font = font(size * MARK_SCALE);
+      ctx.fillText('?', x + width + size * MARK_GAP, y - size * 0.18);
     }
     ctx.restore();
   }

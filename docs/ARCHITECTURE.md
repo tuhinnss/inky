@@ -587,7 +587,7 @@ What makes that hold:
 
 ## 9. Tests
 
-334 tests in 14 files, run with Vitest in Node. `npm test` takes about two seconds.
+346 tests in 15 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area              | Tests | What is covered                                                                                                                                                           |
 | ----------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -599,6 +599,7 @@ What makes that hold:
 | Model integration | 28    | The bundled ONNX model on our rasteriser: every symbol, five handwriting sizes, four pen widths                                                                           |
 | Geometry fusion   | 21    | Stroke arrangements, fusion weights, the decimal point                                                                                                                    |
 | Pipeline          | 50    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol                                                                                      |
+| Answer overlay    | 12    | What is written after the "=", how dark, and that the doubt mark fits inside the write-on reveal and on the page                                                          |
 
 Two choices are worth noting. Layout and recognition are tested with **synthetic handwriting**: a
 fixture that turns a string such as `7.5÷2-60=` into stroke paths with controllable size, spacing
