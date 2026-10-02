@@ -184,6 +184,68 @@ its vertical position. The other 15 symbols are classified by the model.
 [Section 3](#combining-the-model-with-geometry) describes how geometry and model output are
 combined for the remaining ambiguous cases.
 
+### Two helpers for digits
+
+The chosen model reads 99.4% of its own test set and only 93.5% of digits written by people it
+has never seen (section 8). No candidate does better alone. We ran all five on the same 3,498
+real pen-written digits:
+
+| Model               | Real digits read correctly |
+| ------------------- | -------------------------- |
+| altynbk `cnn_aug`   | 93.5%                      |
+| ONNX Zoo `mnist-12` | 91.7%                      |
+| Sagyam MobileNetV2  | 91.1%                      |
+| kbss0000            | 91.1%                      |
+| mathex              | 89.6%                      |
+
+Swapping models would therefore make things worse. But the models fail on _different_ digits,
+because each learned from different handwriting. Ours takes a `4` written in one stroke for a
+`9`; `mnist-12` reads that `4` correctly and is itself poor at `9`.
+
+So two of the smallest candidates are bundled as **digit helpers** and vote alongside the main
+model ([`ensemble.ts`](../src/recognition/ensemble.ts)):
+
+- **mathex** `mathex_v1.h5`: two convolutions and three dense layers, 60,137 parameters, 0.24 MB.
+- **ONNX Model Zoo `mnist-12`**: two convolutions and one dense layer, 5,998 parameters, 0.03 MB.
+
+The main model alone decides what _kind_ of symbol something is. When it gives a symbol any real
+chance of being a digit, each helper is shown the symbol, prepared the way that helper's own
+published code prepares an image. The probability the main model gave to "a digit" is then shared
+out among the ten digits in proportion to
+
+```
+P_main(d)  x  P_mathex(d)^0.5  x  P_mnist(d)^0.25
+```
+
+The helpers only move probability between digits. They cannot turn a digit into an operator or
+the reverse, since they do not know operators, and the operator probabilities come back
+bit-for-bit unchanged, which a test checks.
+
+**The weights were not tuned on the test.** The data set is split by writer. The two exponents
+were chosen on its 30 training writers (7,494 digits) from a small grid, and only then measured on
+the 14 test writers.
+
+| Voting on digits                  | Extra download | 30 writers used to choose | 14 other writers |
+| --------------------------------- | -------------- | ------------------------- | ---------------- |
+| Main model alone                  | none           | 96.25%                    | 93.48%           |
+| With mathex and `mnist-12` voting | 0.27 MB        | 98.41%                    | **97.80%**       |
+
+Misread digits fall from 228 to 77 on the test writers. Asking the main model about ten slightly
+rotated and sheared copies of each digit and averaging, the obvious alternative that needs no
+extra model, gave 94.5% for ten times the work.
+
+**No training.** `mnist-12.onnx` is bundled byte for byte. The mathex weights are copied into an
+ONNX graph by [`scripts/model/convert_helpers.py`](../scripts/model/convert_helpers.py); on 1,000
+images the copy and the Keras original agree to within 0.000005 on every output and on the top
+class every time.
+
+**Licences.** Both are permissive, and neither is as tidy as one would like. The mathex repository
+has an MIT `LICENSE` file whose copyright line is still the template placeholder. The `mnist-12`
+README says "License: MIT" with no licence text, in a repository that is Apache-2.0. Both are
+reproduced in [`public/models/LICENSE.txt`](../public/models/LICENSE.txt). mathex was trained on a
+Kaggle set of handwritten math symbols and `mnist-12` on MNIST; as with the main model, we ship
+weights and no images.
+
 ### Provenance and licence check
 
 We read the licence files ourselves. Two things are worth stating plainly.
@@ -360,6 +422,20 @@ drawn next to the equation, and the size of the handwriting. A test confirms the
 symbol identically at handwriting sizes from 24 px to 320 px and at pen widths across the whole
 range of the size slider, 1.5 px to 12 px.
 
+### Images for the digit helpers
+
+A symbol the main model allows to be a digit is drawn twice more, for the two helpers of section
+2 ([`helperImages.ts`](../src/recognition/helperImages.ts)). Each helper has its own published
+way of preparing an image, and a model only reads what looks like its training data, so those
+steps are reproduced as upstream wrote them rather than tidied up. Both begin from a 280 px
+drawing of the symbol, as a drawing app would save it. For mathex it is made black-and-white,
+cropped to the symbol with ten extra pixels on the right and below, and squeezed to 28x28 without
+regard to its proportions. For `mnist-12` the ink is scaled to fit a 20x20 box, proportions kept,
+and placed in a 28x28 frame with its centre of mass at the centre, as the MNIST digits were.
+
+All of this runs in the worker. The worker and the tests call the same function,
+[`recognise.ts`](../src/recognition/recognise.ts), so the tests exercise what ships.
+
 ### Combining the model with geometry
 
 Normalising a symbol to fill the frame is what makes the model insensitive to size. It is also
@@ -381,7 +457,7 @@ value is the confidence shown to the user.
 
 The weights are soft on purpose. A weight of 0.05 does not forbid a reading; it means the model
 must be twenty times surer of it to win. Geometry scales the model's opinion and never replaces
-it. All 15 of these classes are always the model's call.
+it. All 15 of these classes are always the models' call.
 
 The decimal point is the one exception, for the reason given in section 2: a lone dot is never
 sent to the model. It is read as `.` with high confidence when it sits in the lower part of the
@@ -556,14 +632,15 @@ lines, the tests cover them, and a model that could read them would need no pars
 ## 7. Working offline
 
 A service worker generated by `vite-plugin-pwa` (Workbox) precaches every file the app can
-request: the HTML, scripts, styles, the font, the icons, the model and the WASM runtime. That is
-16 files and 16.0 MB, of which 14.2 MB is the ONNX runtime (3.7 MB over the wire with gzip).
+request: the HTML, scripts, styles, the font, the icons, the models and the WASM runtime. That is
+19 files and 16.3 MB, of which 14.2 MB is the ONNX runtime (3.7 MB over the wire with gzip) and
+1.85 MB is the three models.
 
 After one online visit the app loads and recognises with no network at all. It tells the user
 when that point is reached, with a note at the foot of the page.
 
 Verified by loading the production build once, switching the browser context offline, reloading,
-writing `18+4×3=` and reading back 30, with no failed request. During the online load all 13
+writing `18+4×3=` and reading back 30, with no failed request. During the online load all 14
 requests went to the app's own origin. There is no third-party request of any kind: no CDN, no
 analytics, no font service.
 
@@ -581,19 +658,28 @@ still busy.
 
 | Metric                                     | Result                      |
 | ------------------------------------------ | --------------------------- |
-| Frames sampled (with the pen down)         | 2,763 (1,063)               |
-| Longest frame                              | 14.0 ms                     |
+| Frames sampled (with the pen down)         | 2,282 (622)                 |
+| Longest frame                              | 7.8 ms                      |
 | Frames over 16.7 ms                        | 0                           |
 | Long tasks (over 50 ms) on the main thread | 0                           |
-| Main-thread cost of reading the page       | 1.4 ms median, 2.9 ms worst |
-| Worker time for a new symbol               | about 20 ms                 |
+| Main-thread cost of reading the page       | 1.3 ms median, 2.8 ms worst |
+| Worker time for a new symbol               | about 9 ms                  |
 
 ### Inference
 
-From the model benchmark in section 2, under the same WASM runtime: 3.7 ms for one symbol and
-29 ms for a batch of eight, single-threaded. On a fresh page load the first answer appeared 2.7 s
-after the first stroke began; that includes writing the expression and the runtime finishing its
-start-up.
+Single-threaded, under the same WASM runtime the browser uses, median of 100 runs:
+
+| What is classified           | Main model alone | With the digit helpers |
+| ---------------------------- | ---------------- | ---------------------- |
+| One digit                    | 3.7 ms           | 5.2 ms                 |
+| One operator                 | 3.7 ms           | 3.7 ms                 |
+| An equation of eight symbols | 30.6 ms          | 37.0 ms                |
+| Eight digits                 | 29.5 ms          | 39.4 ms                |
+
+The helpers cost about 1.5 ms per digit, including drawing their images, and nothing for an
+operator, which they are never shown. In the browser the three models load and warm up in about
+0.35 s. On a fresh page load the first answer appeared 2.4 s after the first stroke began; that
+includes writing the expression and the runtime finishing its start-up.
 
 ### Accuracy on real handwriting
 
@@ -602,21 +688,30 @@ path the app actually takes, strokes in and a symbol out, we ran it on the UCI p
 set: digits written with a stylus on a tablet and stored as pen trajectories. The figures are for
 its writer-independent test set, 3,498 digits by 14 people, none of whom the model has seen.
 
-| Measure                                                      | Result           |
-| ------------------------------------------------------------ | ---------------- |
-| Classifier alone, each digit's strokes given as one symbol   | 93.48% (3,270)   |
-| Whole path: layout groups the strokes, geometry weighs in    | 92.54% (3,237)   |
-| Digits that layout split into more than one symbol           | 36               |
-| Same test at 40 px and 160 px, and with pens from 2 to 12 px | 92.65% to 93.65% |
-| Misreads that the confidence indicator flags (below 0.6)     | 28.5%            |
-| Correct readings it flags                                    | 1.7%             |
+| Measure                                                        | Result           |
+| -------------------------------------------------------------- | ---------------- |
+| Main model alone, each digit's strokes given as one symbol     | 93.48% (3,270)   |
+| With the digit helpers voting (what the app does)              | 97.80% (3,421)   |
+| Whole path: layout groups the strokes, geometry weighs in      | 96.86% (3,388)   |
+| Digits that layout split into more than one symbol             | 36               |
+| With the helpers, at 40 px and 160 px and pens from 2 to 12 px | 97.14% to 97.86% |
+| Misreads that the confidence indicator flags (below 0.6)       | 19.5%            |
+| Correct readings it flags                                      | 0.3%             |
 
-Two things follow. The result barely moves with writing size or pen width, so the rasteriser is
-doing its job and the gap to the 99.4% of the model's own test set is the model meeting writers
-unlike those it was trained on. And the errors are concentrated: 52 of the 228 are a `4` written
-in one stroke without lifting the pen, a form the training data did not contain, read as `9`.
-The next most common are `8` read as `0` (25), `9` as `3` (24) and `2` as `3` (19). `0`, `1`, `6`
-and `7` are all read correctly more than 98.8% of the time.
+The first row is where this measurement began, and it said two things. The result barely moved
+with writing size or pen width, so the rasteriser was doing its job and the gap to the 99.4% of
+the model's own test set was the model meeting writers unlike those it was trained on. And the
+errors were concentrated: 52 of the 228 were a `4` written in one stroke without lifting the pen,
+a form the training data did not contain, read as `9`.
+
+That is what led to the digit helpers of section 2, which remove two thirds of the errors. Of the
+77 that remain, 26 are a `9` read as `3`; no other confusion occurs more than six times. Every
+digit but `9` (89.9%) and `8` (96.7%) is now read correctly at least 97.9% of the time.
+
+The whole path is a point lower than recognition alone because of layout, not reading: 36 digits
+written in two strokes that do not overlap, mostly `4` and `5`, are taken for two symbols. A digit
+standing alone gives layout nothing to judge its size against; within a line of writing the
+neighbours do.
 
 The data set has digits only, so the operators are not covered by this measurement. It can be
 repeated with `npm run eval:digits`; see [scripts/eval](../scripts/eval/README.md).
@@ -656,7 +751,7 @@ What makes that hold:
 
 ## 9. Tests
 
-457 tests in 20 files, run with Vitest in Node. `npm test` takes about two seconds.
+514 tests in 22 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area              | Tests | What is covered                                                                                                                                                           |
 | ----------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -665,7 +760,8 @@ What makes that hold:
 | Layout            | 36    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence                                                                             |
 | Ink               | 38    | Undo/redo stack behaviour, gesture folding, both erasers                                                                                                                  |
 | Rasteriser        | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                  |
-| Model integration | 30    | The bundled ONNX model on our rasteriser: every symbol, five handwriting sizes, six pen widths across the slider's range                                                  |
+| Model integration | 44    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads             |
+| Digit helpers     | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                           |
 | Geometry fusion   | 21    | Stroke arrangements, fusion weights, the decimal point                                                                                                                    |
 | Pipeline          | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                       |
 | Column sums       | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                            |
@@ -682,10 +778,11 @@ recognition would fail the build.
 
 ## 10. Limitations
 
-- **About one real digit in thirteen is misread.** On pen-written digits from people the model
-  has not seen, the whole path reads 92.5% correctly (section 8). The model's training data came
-  from a small number of writers, and some common ways of writing a digit, a one-stroke `4`
-  above all, are not in it. Operators have been measured on synthetic handwriting only.
+- **About one real digit in thirty is misread.** On pen-written digits from people the models
+  have not seen, the whole path reads 96.9% correctly (section 8). A `9` read as `3` is the
+  largest single cause that remains. Operators have been measured on synthetic handwriting only.
+- **A digit written in two strokes that do not overlap can be split in two.** This happened to 36
+  of 3,498 real digits, mostly `4` and `5`.
 - **Symbols must not overlap horizontally.** Segmentation is by horizontal overlap, so digits
   written touching or on top of each other are read as one symbol. Cursive-style joined digits
   are not supported.

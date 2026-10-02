@@ -1,5 +1,5 @@
 import type { Stroke } from '../ink';
-import { MODEL } from './model';
+import { MODEL_FILES } from './model';
 import { packSymbols, transferables, type WorkerRequest, type WorkerResponse } from './protocol';
 
 export interface ClassifyResult {
@@ -19,7 +19,7 @@ interface Pending {
  * promises.
  */
 export class RecognitionClient {
-  /** Resolves with the model's load time once it is ready; rejects if it cannot load. */
+  /** Resolves with the models' load time once they are ready; rejects if they cannot load. */
   readonly ready: Promise<number>;
 
   private readonly worker: Worker;
@@ -53,7 +53,15 @@ export class RecognitionClient {
     // Callers await `ready` when they care; an unobserved failure must not crash the page.
     this.ready.catch(() => {});
 
-    this.post({ type: 'init', modelUrl: new URL(MODEL.file, document.baseURI).href });
+    const url = (file: string): string => new URL(file, document.baseURI).href;
+    this.post({
+      type: 'init',
+      modelUrls: {
+        main: url(MODEL_FILES.main),
+        mathex: url(MODEL_FILES.mathex),
+        mnist: url(MODEL_FILES.mnist),
+      },
+    });
   }
 
   /** Classifies symbols, each given as its strokes. Resolves in request order. */

@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { createStroke, type Stroke } from '../../src/ink';
 import { segmentLine } from '../../src/layout';
 import { interpret } from '../../src/recognition/interpret';
-import { ascii, classify, rasterize } from '../../tests/recognition/helpers';
+import { ascii, classify, classifyAlone, rasterize } from '../../tests/recognition/helpers';
 import { parsePendigits, scaleToSize, type PenSample } from './pendigits';
 
 const DIR = process.env.PENDIGITS_DIR ?? 'data/pendigits';
@@ -38,16 +38,23 @@ describe.skipIf(!existsSync(path))(`real pen-written digits (${SPLIT} set)`, () 
     const samples = parsePendigits(await readFile(path, 'utf8'));
     const inks = samples.map(toStrokes);
 
-    // 1. The classifier alone, given each digit's strokes as one symbol.
+    // 1. Recognition as the worker does it, given each digit's strokes as one symbol:
+    //    the main model with the digit helpers voting. And, for comparison, the main
+    //    model by itself.
     const modelSays: string[] = [];
     const confidence: number[] = [];
     const probabilities: Float32Array[] = [];
+    let aloneRight = 0;
     for (let i = 0; i < inks.length; i += BATCH) {
-      for (const prediction of await classify(inks.slice(i, i + BATCH))) {
+      const batch = inks.slice(i, i + BATCH);
+      for (const prediction of await classify(batch)) {
         modelSays.push(prediction.symbol);
         confidence.push(prediction.confidence);
         probabilities.push(prediction.probabilities);
       }
+      (await classifyAlone(batch)).forEach((prediction, j) => {
+        if (prediction.symbol === samples[i + j].label) aloneRight++;
+      });
     }
 
     // 2. The whole path: layout decides the grouping, geometry weighs in on the reading.
@@ -83,10 +90,11 @@ describe.skipIf(!existsSync(path))(`real pen-written digits (${SPLIT} set)`, () 
 
     const lines = [
       `${FILES[SPLIT]}: ${total} digits, written at ${SIZE} px with a ${PEN} px pen`,
-      `classifier alone:  ${modelRight}/${total} = ${pct(modelRight, total)}`,
+      `main model alone:  ${aloneRight}/${total} = ${pct(aloneRight, total)}`,
+      `with the helpers:  ${modelRight}/${total} = ${pct(modelRight, total)}`,
       `whole path:        ${pathRight}/${total} = ${pct(pathRight, total)}  (${split.length} digits split into several symbols)`,
       '',
-      'digit      n   classifier   whole path',
+      'digit      n   recognised   whole path',
       ...[...perDigit].map(
         ([d, row]) =>
           `  ${d}    ${String(row.n).padStart(4)}   ${pct(row.model, row.n).padStart(8)}   ${pct(row.path, row.n).padStart(8)}`,

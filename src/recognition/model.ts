@@ -50,3 +50,43 @@ export const MODEL = {
 } as const;
 
 export const PIXELS_PER_SYMBOL = MODEL.size * MODEL.size;
+
+/**
+ * Two small digit-only models that vote alongside the main model on which digit a digit
+ * is (see ensemble.ts). Their first ten outputs are the digits 0 to 9, in order.
+ */
+export const DIGIT_HELPERS = {
+  /** devansh9837/mathex `mathex_v1.h5`, converted to ONNX. 14 outputs, already probabilities. */
+  mathex: {
+    file: 'models/digit-helper-mathex.onnx',
+    inputName: 'input',
+    outputName: 'probabilities',
+    classes: 14,
+    /** Pen width, in canvas pixels, of the drawing its image is made from. */
+    pen: 6,
+    weight: 0.5,
+    logits: false,
+    /** False for a model whose graph only accepts one image per run. */
+    batched: true,
+  },
+  /** ONNX Model Zoo `mnist-12`, unchanged. 10 outputs, raw scores. */
+  mnist: {
+    file: 'models/digit-helper-mnist.onnx',
+    inputName: 'Input3',
+    outputName: 'Plus214_Output_0',
+    classes: 10,
+    pen: 16,
+    weight: 0.25,
+    logits: true,
+    batched: false,
+  },
+} as const;
+
+export type ModelName = 'main' | keyof typeof DIGIT_HELPERS;
+
+/** The file each model is loaded from, relative to the app's base URL. */
+export const MODEL_FILES: Readonly<Record<ModelName, string>> = {
+  main: MODEL.file,
+  mathex: DIGIT_HELPERS.mathex.file,
+  mnist: DIGIT_HELPERS.mnist.file,
+};

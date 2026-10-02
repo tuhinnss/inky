@@ -8,6 +8,7 @@
  */
 
 import type { Stroke } from '../ink';
+import type { ModelName } from './model';
 import type { RasterStroke } from './rasterize';
 
 export interface PackedSymbols {
@@ -22,7 +23,8 @@ export interface PackedSymbols {
 }
 
 export type WorkerRequest =
-  { type: 'init'; modelUrl: string } | ({ type: 'classify'; id: number } & PackedSymbols);
+  | { type: 'init'; modelUrls: Readonly<Record<ModelName, string>> }
+  | ({ type: 'classify'; id: number } & PackedSymbols);
 
 export type WorkerResponse =
   | { type: 'ready'; loadMs: number }

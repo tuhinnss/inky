@@ -1,20 +1,20 @@
 /**
  * The recognition worker. Everything expensive happens here, off the main thread:
- * rasterising strokes into images and running the neural network. The main thread only
+ * rasterising strokes into images and running the neural networks. The main thread only
  * posts stroke coordinates and receives probabilities, so writing stays at full frame
  * rate however long inference takes.
  */
 
 import * as ort from 'onnxruntime-web/wasm';
 import wasmUrl from 'onnxruntime-web/ort-wasm-simd-threaded.wasm?url';
-import { MODEL, PIXELS_PER_SYMBOL } from './model';
+import type { ModelName } from './model';
 import {
   unpackSymbols,
   type PackedSymbols,
   type WorkerRequest,
   type WorkerResponse,
 } from './protocol';
-import { rasterizeSymbol } from './rasterize';
+import { recognise, warmUp, type Sessions } from './recognise';
 
 /** The parts of the worker global this file uses, typed without pulling in the DOM lib clash. */
 interface WorkerScope {
@@ -24,57 +24,48 @@ interface WorkerScope {
 const scope = self as unknown as WorkerScope;
 
 // One thread. Multi-threaded WASM needs cross-origin isolation headers that static hosts
-// such as GitHub Pages cannot send, and this model is fast enough without it.
+// such as GitHub Pages cannot send, and these models are fast enough without it.
 ort.env.wasm.numThreads = 1;
 // Load the runtime binary from our own bundle, never from a CDN: the app must work offline.
 ort.env.wasm.wasmPaths = { wasm: wasmUrl };
 
-let session: ort.InferenceSession | undefined;
+let sessions: Sessions | undefined;
 
-async function init(modelUrl: string): Promise<number> {
-  const started = performance.now();
-  const response = await fetch(modelUrl);
-  if (!response.ok) throw new Error(`Could not load the model (${response.status})`);
-
-  session = await ort.InferenceSession.create(await response.arrayBuffer(), {
+async function load(url: string): Promise<ort.InferenceSession> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not load a model (${response.status})`);
+  return ort.InferenceSession.create(await response.arrayBuffer(), {
     executionProviders: ['wasm'],
     graphOptimizationLevel: 'all',
   });
+}
+
+async function init(urls: Readonly<Record<ModelName, string>>): Promise<number> {
+  const started = performance.now();
+  // The files download side by side; the sessions are then created one after another,
+  // since the single-threaded runtime would not do them any faster together.
+  const [main, mathex, mnist] = await Promise.all([
+    load(urls.main),
+    load(urls.mathex),
+    load(urls.mnist),
+  ]);
+  sessions = { main, mathex, mnist };
 
   // The first run allocates buffers and is several times slower than later ones.
-  // Spend that cost now, on a blank image, instead of on the user's first equation.
-  await run(new Float32Array(PIXELS_PER_SYMBOL), 1);
+  // Spend that cost now, on blank images, instead of on the user's first equation.
+  await warmUp(ort, sessions);
   return performance.now() - started;
 }
 
-async function run(input: Float32Array, count: number): Promise<Float32Array> {
-  if (!session) throw new Error('The model is not loaded yet');
-
-  const tensor = new ort.Tensor('float32', input, [count, 1, MODEL.size, MODEL.size]);
-  const outputs = await session.run({ [MODEL.inputName]: tensor });
-  const output = outputs[MODEL.outputName];
-  try {
-    // Copy out before disposing: the copy's buffer is what gets transferred back.
-    return (output.data as Float32Array).slice();
-  } finally {
-    // Tensors can own memory outside the JavaScript heap, where the garbage collector
-    // cannot see it. Releasing them explicitly is what keeps a long session flat.
-    tensor.dispose();
-    output.dispose();
-  }
-}
-
 async function classify(packed: PackedSymbols): Promise<Float32Array> {
-  const symbols = unpackSymbols(packed);
-  const input = new Float32Array(symbols.length * PIXELS_PER_SYMBOL);
-  symbols.forEach((strokes, i) => rasterizeSymbol(strokes, input, i * PIXELS_PER_SYMBOL));
-  return run(input, symbols.length);
+  if (!sessions) throw new Error('The models are not loaded yet');
+  return recognise(ort, sessions, unpackSymbols(packed));
 }
 
 async function handle(request: WorkerRequest): Promise<void> {
   try {
     if (request.type === 'init') {
-      scope.postMessage({ type: 'ready', loadMs: await init(request.modelUrl) });
+      scope.postMessage({ type: 'ready', loadMs: await init(request.modelUrls) });
       return;
     }
     const started = performance.now();

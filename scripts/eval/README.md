@@ -26,10 +26,14 @@ gzip -dk pendigits-orig.tes.Z pendigits-orig.tra.Z
 npm run eval:digits
 ```
 
-Each digit is scaled to the height it would have on the page, drawn through the app's own
-rasteriser, classified by the bundled model, and also taken through layout and the geometric
-prior. The report gives accuracy for the classifier alone and for the whole path, a per-digit
-table, the most common confusions, and how often the confidence indicator flags a misread.
+Each digit is scaled to the height it would have on the page and recognised by the same function
+the app's worker calls, then also taken through layout and the geometric prior. The report gives
+accuracy for the main model alone, for recognition as the app does it with the digit helpers
+voting, and for the whole path; a per-digit table; the most common confusions; and how often the
+confidence indicator flags a misread.
+
+Expected on the test set: 93.48% for the main model alone, 97.80% with the helpers, 96.86% for the
+whole path.
 
 | Variable          | Default          | Meaning                                                  |
 | ----------------- | ---------------- | -------------------------------------------------------- |

@@ -1,14 +1,16 @@
 /**
- * End-to-end check of the recognition path with the real model: vector strokes are
- * rasterised by our code and classified by the bundled ONNX file, under the same WASM
- * runtime the browser uses. If the rasteriser drifted away from what the model was
- * trained on, this is where it would show.
+ * End-to-end check of the recognition path with the real models: vector strokes are
+ * rasterised by our code and classified by the bundled ONNX files, under the same WASM
+ * runtime the browser uses and through the same function the worker calls. If the
+ * rasteriser drifted away from what a model was trained on, this is where it would show.
  */
 import { describe, expect, it } from 'vitest';
+import { createStroke, type Stroke } from '../../src/ink';
 import { MODEL_SYMBOLS } from '../../src/recognition/model';
 import { PEN_SIZE } from '../../src/ui/sizes';
 import { ink } from '../fixtures/ink';
-import { ascii, classify, rasterize } from './helpers';
+import { REAL_DIGITS, type RealDigit } from '../fixtures/realDigits';
+import { ascii, classify, classifyAlone, rasterize } from './helpers';
 
 const ALL = MODEL_SYMBOLS.join('');
 
@@ -71,6 +73,67 @@ describe('bundled model on our rasteriser', () => {
     for (const { probabilities } of predictions) {
       expect(probabilities).toHaveLength(MODEL_SYMBOLS.length);
       expect(probabilities.reduce((sum, p) => sum + p, 0)).toBeCloseTo(1, 4);
+    }
+  });
+});
+
+describe('the digit helpers', () => {
+  /** A real digit as strokes, written at the given height. */
+  const strokesOf = ({ strokes }: RealDigit, size = 80): Stroke[] =>
+    strokes.map((flat) => {
+      const points = [];
+      for (let i = 0; i + 1 < flat.length; i += 2) {
+        points.push({ x: (flat[i] * size) / 80, y: (flat[i + 1] * size) / 80, pressure: 0.5 });
+      }
+      return createStroke(points, 4, '#000');
+    });
+
+  it.each(REAL_DIGITS.map((real) => [real.digit, real.aloneReads, real] as const))(
+    'read a real "%s" that the main model alone takes for "%s"',
+    async (digit, aloneReads, real) => {
+      const [alone] = await classifyAlone([strokesOf(real)]);
+      const [voted] = await classify([strokesOf(real)]);
+      expect(alone.symbol).toBe(aloneReads); // the fixture still shows what it is meant to
+      expect(voted.symbol).toBe(digit);
+    },
+  );
+
+  it('read the one-stroke 4 at any handwriting size', async () => {
+    const four = REAL_DIGITS.find((real) => real.digit === '4')!;
+    const predictions = await classify([24, 40, 80, 160, 320].map((size) => strokesOf(four, size)));
+    expect(predictions.map((prediction) => prediction.symbol)).toEqual(['4', '4', '4', '4', '4']);
+  });
+
+  it('leave an operator exactly as the main model read it', async () => {
+    const written = ink('+÷=×-', { size: 80, wobble: 0 }).map((symbol) => symbol.strokes);
+    const alone = await classifyAlone(written);
+    const voted = await classify(written);
+    voted.forEach((prediction, i) => {
+      expect(prediction.symbol).toBe(alone[i].symbol);
+      // The operator probabilities are untouched: not one bit of them changes.
+      for (let c = 10; c < MODEL_SYMBOLS.length; c++) {
+        expect(prediction.probabilities[c]).toBe(alone[i].probabilities[c]);
+      }
+    });
+  });
+
+  it('never change how likely a symbol is to be a digit at all', async () => {
+    const written = ink('4+9=', { size: 80, wobble: 0.03, seed: 4 }).map((s) => s.strokes);
+    const alone = await classifyAlone(written);
+    const voted = await classify(written);
+    const digits = (p: Float32Array): number => p.subarray(0, 10).reduce((sum, v) => sum + v, 0);
+    voted.forEach((prediction, i) => {
+      expect(digits(prediction.probabilities)).toBeCloseTo(digits(alone[i].probabilities), 5);
+    });
+  });
+
+  it('give the same answers for a batch as for its symbols one at a time', async () => {
+    const batch = REAL_DIGITS.slice(0, 4).map((real) => strokesOf(real));
+    const together = await classify(batch);
+    for (const [i, strokes] of batch.entries()) {
+      const [single] = await classify([strokes]);
+      expect(single.symbol).toBe(together[i].symbol);
+      expect(single.confidence).toBeCloseTo(together[i].confidence, 4);
     }
   });
 });

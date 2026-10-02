@@ -7,6 +7,7 @@ No script here trains anything.
 | Script                    | Purpose                                                                                             |
 | ------------------------- | --------------------------------------------------------------------------------------------------- |
 | `convert_model.py`        | Copies the upstream Keras weights into `public/models/symbol-classifier.onnx` and checks the result |
+| `convert_helpers.py`      | Produces the two digit-helper models in `public/models` and checks the converted one against Keras  |
 | `benchmark_candidates.py` | Runs four candidate models over one common test set                                                 |
 | `benchmark_mobilenet.py`  | Same test set for the fifth candidate, which needs TensorFlow                                       |
 
@@ -26,6 +27,20 @@ python scripts/model/convert_model.py --source candidates/altynbk --out public/m
 preprocessing code. Expected output: `"correct": 1599` of `"test_images": 1608`, an accuracy of
 0.9944029850746269, which is the figure in the upstream `results/metrics.json`. Matching it to
 the last digit is the evidence that the conversion changed nothing.
+
+## Reproducing the digit helpers
+
+With the `mathex` clone and `mnist-12.onnx` from the next section in `candidates/`:
+
+```bash
+python scripts/model/convert_helpers.py --candidates candidates --out public/models --verify
+```
+
+Expected output: `digit-helper-mathex.onnx` with sha256 `aca72925…e0be472` and
+`digit-helper-mnist.onnx` with sha256 `5c688690…20171bdd`, the latter being `mnist-12.onnx`
+unchanged. `--verify` needs TensorFlow; it runs 1,000 images through the original Keras model and
+through the ONNX copy and reports the largest difference between their outputs, 0.0000044, with the
+same top class all 1,000 times.
 
 ## Reproducing the comparison
 
