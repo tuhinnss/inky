@@ -84,6 +84,17 @@ export class RecognitionPipeline {
   }
 
   private run(): void {
+    // Everything in this method runs on the main thread, so its cost comes straight out
+    // of the frame budget. The measure makes it visible in DevTools' Performance panel.
+    const started = performance.now();
+    try {
+      this.readPage();
+    } finally {
+      performance.measure('calcink:read-page', { start: started, end: performance.now() });
+    }
+  }
+
+  private readPage(): void {
     const tracked = this.tracker.update(layoutPage(this.store.all()));
 
     // Forget equations that are no longer on the page.
