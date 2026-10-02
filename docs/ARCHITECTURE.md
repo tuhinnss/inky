@@ -473,6 +473,15 @@ of the stroke group at fault, which is how the interface underlines the right pl
 The answer is drawn on the overlay canvas immediately to the right of the `=`, at the size of
 the handwriting.
 
+**Doubt is shown without a word.** An equation is only as sure as its least sure symbol. When that
+falls below 0.6, the answer is the same answer written more faintly, and each symbol the notebook
+was unsure of gets a dotted pencil line beneath it. An earlier version also wrote a `?` after the
+answer and the doubted reading under the symbol; in use these crowded the page and read as noise,
+so they were removed. The faint answer says "check this" and the dotted line says where.
+
+A line that does not make sense gets no answer at all: a zigzag under the symbol at fault and a
+short note saying why.
+
 ## 4. Drawing
 
 ### Three canvases
@@ -763,24 +772,24 @@ What makes that hold:
 
 ## 9. Tests
 
-522 tests in 23 files, run with Vitest in Node. `npm test` takes about two seconds.
+530 tests in 23 files, run with Vitest in Node. `npm test` takes about two seconds.
 
-| Area                  | Tests | What is covered                                                                                                                                                           |
-| --------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Math engine           | 89    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws |
-| Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                          |
-| Layout                | 36    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence                                                                             |
-| Ink                   | 38    | Undo/redo stack behaviour, gesture folding, both erasers                                                                                                                  |
-| Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                  |
-| Model integration     | 44    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads             |
-| Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                           |
-| Geometry fusion       | 21    | Stroke arrangements, fusion weights, the decimal point                                                                                                                    |
-| Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                       |
-| Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                            |
-| Answer overlay        | 18    | What is written after the "=" or under a rule, how dark, and that the doubt mark fits inside the write-on reveal and on the page                                          |
-| Tool sizes            | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                          |
-| Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                          |
-| Evaluation data       | 8     | Reading pen trajectory files for the real-handwriting measurement in section 8                                                                                            |
+| Area                  | Tests | What is covered                                                                                                                                                                      |
+| --------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Math engine           | 89    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws            |
+| Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                                     |
+| Layout                | 36    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence                                                                                        |
+| Ink                   | 38    | Undo/redo stack behaviour, gesture folding, both erasers                                                                                                                             |
+| Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                             |
+| Model integration     | 44    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads                        |
+| Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                                      |
+| Geometry fusion       | 21    | Stroke arrangements, fusion weights, the decimal point                                                                                                                               |
+| Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                                  |
+| Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                                       |
+| Answer overlay        | 26    | What is written after the "=" or under a rule and how dark, the dotted line under a doubted symbol, the note for a line that makes no sense, and that no question mark is ever drawn |
+| Tool sizes            | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                                     |
+| Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                     |
+| Evaluation data       | 8     | Reading pen trajectory files for the real-handwriting measurement in section 8                                                                                                       |
 
 Two choices are worth noting. Layout and recognition are tested with **synthetic handwriting**: a
 fixture that turns a string such as `7.5÷2-60=` into stroke paths with controllable size, spacing

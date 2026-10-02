@@ -47,9 +47,9 @@ appears about a third of a second after you stop writing.
 - Erase a number and write another in its place, and the answer updates.
 
 Your writing is ink. Everything the notebook works out is drawn in pencil. When it is unsure of a
-symbol it read, the answer is fainter and the doubtful symbol is underlined with a dotted line and
-labelled with what it was taken to be. When an expression does not make sense, the symbol at fault
-is marked and a note says why.
+symbol it read, the answer is written more faintly and the doubtful symbol gets a dotted line
+beneath it. When an expression does not make sense, the symbol at fault is marked and a note says
+why; nothing is written where the answer would go.
 
 | Tool, in the margin                        | Key      |
 | ------------------------------------------ | -------- |
@@ -120,7 +120,7 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 | `npm run dev`         | Start the dev server                                                                    |
 | `npm run build`       | Type-check, then build to `dist/`                                                       |
 | `npm run preview`     | Serve the production build locally                                                      |
-| `npm test`            | Run the 522 unit and integration tests once                                             |
+| `npm test`            | Run the 530 unit and integration tests once                                             |
 | `npm run typecheck`   | Type-check without building                                                             |
 | `npm run lint`        | Lint the source. Fails on `eval` or `new Function`                                      |
 | `npm run format`      | Format the source with Prettier                                                         |

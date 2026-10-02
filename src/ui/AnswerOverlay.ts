@@ -14,9 +14,6 @@ const font = (size: number): string => FONT.replace('{size}', String(size));
 export const LOW_CONFIDENCE = 0.6;
 /** How long an answer takes to be pencilled in. */
 const WRITE_MS = 260;
-/** The "?" after a doubtful answer: its size and the gap before it, relative to the answer. */
-const MARK_SCALE = 0.55;
-const MARK_GAP = 0.12;
 
 interface Shown {
   text: string;
@@ -25,15 +22,14 @@ interface Shown {
 }
 
 /**
- * What to pencil in after the "=", or null when there is nothing to say yet.
- * Malformed expressions get a question mark; the detail goes in a note below the line.
- * A bare "=" with nothing before it is not an error, just a line not yet written.
+ * What to pencil in after the "=", or null when there is nothing to write there: the
+ * line is not finished, or it does not make sense, in which case a note below it says
+ * why and the place for the answer stays empty.
  */
 export function answerText(equation: Equation): string | null {
   const { evaluation } = equation;
-  if (!evaluation) return null;
-  if (evaluation.status !== 'error') return evaluation.text;
-  return evaluation.error.code === 'empty' ? null : '?';
+  if (!evaluation || evaluation.status === 'error') return null;
+  return evaluation.text;
 }
 
 /**
@@ -49,8 +45,12 @@ export function answerOpacity(confidence: number): number {
  * Draws everything the notebook writes back onto the page: answers, doubts and errors.
  *
  * The rule of the interface is that ink is the user's and pencil is the machine's, so
- * all of it is graphite. Nothing here runs unless an equation changes or an answer is
- * mid-animation; there is no standing render loop.
+ * all of it is graphite. Doubt is shown the way a careful reader would mark it, without
+ * a word: the answer is written more faintly, and the symbol it was unsure of gets a
+ * dotted line beneath it.
+ *
+ * Nothing here runs unless an equation changes or an answer is mid-animation; there is
+ * no standing render loop.
  */
 export class AnswerOverlay {
   private equations: readonly Equation[] = [];
@@ -106,13 +106,13 @@ export class AnswerOverlay {
 
     for (const equation of this.equations) {
       this.drawDoubts(ctx, equation);
+      this.drawErrorNote(ctx, equation);
 
       const shown = this.shown.get(equation.id);
       if (!shown) continue;
       const progress = this.reducedMotion ? 1 : Math.min(1, (now - shown.since) / WRITE_MS);
       if (progress < 1) animating = true;
       this.drawAnswer(ctx, equation, shown.text, progress);
-      this.drawErrorNote(ctx, equation);
     }
 
     if (animating) this.requestDraw();
@@ -135,41 +135,29 @@ export class AnswerOverlay {
 
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-
-    // A doubtful answer is followed by a small "?". It is part of what is written, so it
-    // counts towards the room the answer needs and towards what the animation reveals.
-    const doubtful = isNumber && equation.confidence < LOW_CONFIDENCE;
-    const measure = (): { width: number; extent: number } => {
-      let mark = 0;
-      if (doubtful) {
-        ctx.font = font(size * MARK_SCALE);
-        mark = size * MARK_GAP + ctx.measureText('?').width;
-      }
-      ctx.font = font(size);
-      const width = ctx.measureText(text).width;
-      return { width, extent: width + mark };
-    };
-    let { width, extent } = measure();
+    ctx.font = font(size);
+    let width = ctx.measureText(text).width;
 
     if (line.column) {
       // Under the rule, where the answer of a column sum is written, with its last digit
       // under the last digits of the rows above.
       const right = Math.max(...line.column.rows.map((row) => row.bounds.maxX));
-      x = Math.max(8, Math.min(right - width, this.layer.width - extent - 10));
+      x = Math.max(8, Math.min(right - width, this.layer.width - width - 10));
       y = line.column.rule.bounds.maxY + line.height * 0.2 + size / 2;
     } else {
       // Running off the right edge: first write smaller, then drop below the line.
       const room = this.layer.width - x - 10;
-      if (extent > room) {
-        const fitted = Math.max(size * 0.55, (size * room) / extent);
-        if ((extent * fitted) / size <= room) {
+      if (width > room) {
+        const fitted = Math.max(size * 0.55, (size * room) / width);
+        if ((width * fitted) / size <= room) {
           size = fitted;
         } else {
           size *= 0.7;
-          x = Math.max(8, Math.min(x, this.layer.width - extent * 0.7 - 10));
+          x = Math.max(8, Math.min(x, this.layer.width - width * 0.7 - 10));
           y = line.bounds.maxY + size * 0.75;
         }
-        ({ width, extent } = measure());
+        ctx.font = font(size);
+        width = ctx.measureText(text).width;
       }
     }
 
@@ -177,59 +165,45 @@ export class AnswerOverlay {
     // The write-on effect: reveal the text from left to right, easing out.
     const eased = 1 - (1 - progress) ** 3;
     ctx.beginPath();
-    ctx.rect(x - size * 0.2, y - size, (extent + size * 0.4) * eased, size * 2);
+    ctx.rect(x - size * 0.2, y - size, (width + size * 0.4) * eased, size * 2);
     ctx.clip();
 
+    // A doubtful answer is the same answer, written more faintly.
     ctx.fillStyle = `rgba(${GRAPHITE}, ${isNumber ? answerOpacity(equation.confidence) : 0.78})`;
     // Kalam's digits sit a little above the middle of its line box.
     ctx.fillText(text, x, y + size * 0.06);
-
-    if (doubtful) {
-      ctx.font = font(size * MARK_SCALE);
-      ctx.fillText('?', x + width + size * MARK_GAP, y - size * 0.18);
-    }
     ctx.restore();
   }
 
-  /** What was read beneath, or beside, each doubtful symbol. */
+  /** A dotted pencil line under each symbol the notebook was unsure of. */
   private drawDoubts(ctx: CanvasRenderingContext2D, equation: Equation): void {
     const { line, readings } = equation;
     if (!line.column) {
-      this.drawRowDoubts(ctx, line, readings);
+      this.drawRowDoubts(ctx, line, readings, 0.14);
       return;
     }
-    // In a column the next row is directly underneath, so the note goes out to the side.
-    const beside = line.bounds.maxX + line.height * 0.3;
+    // In a column the next row is directly underneath, so the line is kept close.
     let first = 0;
     for (const row of line.column.rows) {
-      this.drawRowDoubts(ctx, row, readings.slice(first, first + row.symbols.length), beside);
+      this.drawRowDoubts(ctx, row, readings.slice(first, first + row.symbols.length), 0.07);
       first += row.symbols.length;
     }
   }
 
-  /**
-   * A dotted pencil underline beneath each doubtful symbol of one row of writing, with
-   * what it was taken to be.
-   * @param beside if given, the notes are written at this x, level with the row, instead
-   *   of under their symbols.
-   */
+  /** @param drop how far below the row the dotted lines go, in digit heights. */
   private drawRowDoubts(
     ctx: CanvasRenderingContext2D,
     row: Line,
     readings: readonly Reading[],
-    beside?: number,
+    drop: number,
   ): void {
-    const size = Math.max(13, row.height * 0.3);
-    const y = row.bounds.maxY + row.height * (beside === undefined ? 0.14 : 0.07);
-    const notes: string[] = [];
+    const y = row.bounds.maxY + row.height * drop;
 
     ctx.save();
     ctx.strokeStyle = `rgba(${GRAPHITE}, 0.7)`;
-    ctx.fillStyle = `rgba(${GRAPHITE}, 0.75)`;
     ctx.lineWidth = 1.5;
     ctx.lineCap = 'round';
     ctx.setLineDash([1, 5]);
-    ctx.font = font(size);
 
     row.symbols.forEach((symbol, index) => {
       const reading = readings[index];
@@ -239,22 +213,7 @@ export class AnswerOverlay {
       ctx.moveTo(symbol.bounds.minX - 2, y);
       ctx.lineTo(symbol.bounds.maxX + 2, y);
       ctx.stroke();
-
-      const note = `${reading.symbol === '-' ? '−' : reading.symbol}?`;
-      if (beside !== undefined) {
-        notes.push(note);
-        return;
-      }
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText(note, (symbol.bounds.minX + symbol.bounds.maxX) / 2, y + 3);
     });
-
-    if (beside !== undefined && notes.length > 0) {
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(notes.join(' '), beside, (row.bounds.minY + row.bounds.maxY) / 2);
-    }
     ctx.restore();
   }
 
@@ -262,6 +221,8 @@ export class AnswerOverlay {
   private drawErrorNote(ctx: CanvasRenderingContext2D, equation: Equation): void {
     const { evaluation, line, sources } = equation;
     if (evaluation?.status !== 'error') return;
+    // A bare "=" with nothing before it is not a mistake, just a line not yet written.
+    if (evaluation.error.code === 'empty') return;
 
     // The position is an index into the expression. Past the end means "something is
     // missing here", which is at the "=". On a line of writing each character is a
@@ -272,9 +233,9 @@ export class AnswerOverlay {
     );
     const index = Math.min(sources ? sources[position] : position, line.symbols.length - 1);
     const at: Bounds = line.symbols[index].bounds;
-    // In a column the zigzag goes right under the symbol and the note under the answer.
+    // In a column the zigzag goes right under the symbol and the note under the rule.
     const y = (line.column ? at.maxY : line.bounds.maxY) + line.height * 0.16;
-    const noteY = line.column ? line.bounds.maxY + line.height * 0.95 : y + 9;
+    const noteY = line.column ? line.bounds.maxY + line.height * 0.3 : y + 9;
 
     ctx.save();
     ctx.strokeStyle = `rgba(${GRAPHITE}, 0.8)`;
