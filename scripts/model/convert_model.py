@@ -117,13 +117,13 @@ def build_onnx(config, weights, class_names, metadata) -> onnx.ModelProto:
 
     graph = helper.make_graph(
         nodes,
-        "inky-symbol-classifier",
+        "calcink-symbol-classifier",
         [helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", 1, 64, 64])],
         [helper.make_tensor_value_info("probabilities", TensorProto.FLOAT, ["batch", len(class_names)])],
         initializers,
     )
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", OPSET)],
-                              producer_name="inky/scripts/model/convert_model.py")
+                              producer_name="calcink/scripts/model/convert_model.py")
     model.ir_version = IR_VERSION
     for key, value in metadata.items():
         entry = model.metadata_props.add()

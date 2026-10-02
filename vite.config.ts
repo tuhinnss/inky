@@ -28,8 +28,8 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
       },
       manifest: {
-        name: 'Inky',
-        short_name: 'Inky',
+        name: 'CalcInk',
+        short_name: 'CalcInk',
         description: 'Write arithmetic by hand and get the answer inline. Runs on your device.',
         display: 'standalone',
         orientation: 'any',

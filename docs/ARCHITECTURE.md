@@ -1,6 +1,6 @@
-# Inky architecture
+# CalcInk architecture
 
-This document explains how Inky, our entry for the CalcInk problem statement, is built and why. Every number in it was measured on this
+This document explains how CalcInk is built and why. Every number in it was measured on this
 codebase, and the section that quotes a number says how.
 
 1. [Overview](#1-overview)
@@ -16,7 +16,7 @@ codebase, and the section that quotes a number says how.
 
 ## 1. Overview
 
-Inky is a notebook page that does arithmetic. You write an expression by hand, end it with
+CalcInk is a notebook page that does arithmetic. You write an expression by hand, end it with
 `=`, and the answer is pencilled in beside it. Change the expression and the answer follows.
 Nothing leaves the device: capture, recognition and evaluation all run in the browser.
 
@@ -473,7 +473,7 @@ The probabilities in a stale reply are still kept. They describe strokes, and st
 change, so they go into the cache and may save the next request the work.
 
 What is left on the main thread is layout, cache lookups and evaluation, all synchronous and
-cheap. It is wrapped in a User Timing measure, `inky:read-page`, so its cost is visible in the
+cheap. It is wrapped in a User Timing measure, `calcink:read-page`, so its cost is visible in the
 Performance panel. Section 8 gives the figures.
 
 ## 6. The math engine

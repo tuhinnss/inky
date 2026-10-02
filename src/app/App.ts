@@ -47,7 +47,7 @@ export class App {
 
     const wordmark = document.createElement('span');
     wordmark.className = 'wordmark';
-    wordmark.textContent = 'Inky';
+    wordmark.textContent = 'CalcInk';
     this.toolbar.element.append(wordmark);
 
     const page = document.createElement('main');

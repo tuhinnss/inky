@@ -1,5 +1,5 @@
 {
-  "name": "inky",
+  "name": "calcink",
   "private": true,
   "version": "0.1.0",
   "description": "On-device handwritten math calculator: write an expression, get the answer inline.",

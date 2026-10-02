@@ -1,4 +1,4 @@
-# Inky
+# CalcInk
 
 A notebook page that does your arithmetic. Write an expression by hand, end it with `=`, and the
 answer is pencilled in beside it. Change the expression and the answer follows.
@@ -7,10 +7,10 @@ Everything runs in the browser: stroke capture, handwriting recognition and eval
 no server, and nothing you write leaves your device. After the first visit it works with no
 network connection at all.
 
-![Inky with three handwritten equations and their answers](docs/screenshot.png)
+![CalcInk with three handwritten equations and their answers](docs/screenshot.png)
 
-Inky is our entry for the Inter IIT Tech Meet 15.0 Bootcamp, Phase 1 Software problem statement,
-"CalcInk: On-Device Handwritten Math Calculator" ([docs/problem-statement.pdf](docs/problem-statement.pdf)).
+Built for the Inter IIT Tech Meet 15.0 Bootcamp, Phase 1 Software problem statement
+([docs/problem-statement.pdf](docs/problem-statement.pdf)).
 
 **Live demo:** _link to be added on deployment_
 
