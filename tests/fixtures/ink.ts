@@ -28,6 +28,16 @@ export function strokesOf(symbols: readonly InkSymbol[]): Stroke[] {
   return symbols.flatMap((symbol) => symbol.strokes);
 }
 
+/** The x at which to carry on writing after `symbols`, leaving a normal gap. */
+export function after(symbols: readonly InkSymbol[], gap = 18): number {
+  const xs = strokesOf(symbols).flatMap((stroke) => stroke.points.map((point) => point.x));
+  return Math.max(...xs) + gap;
+}
+
+export function leftEdge(symbols: readonly InkSymbol[]): number {
+  return Math.min(...strokesOf(symbols).flatMap((stroke) => stroke.points.map((p) => p.x)));
+}
+
 /** Deterministic shuffle, to check that results do not depend on drawing order. */
 export function shuffled<T>(items: readonly T[], seed = 7): T[] {
   const out = [...items];
