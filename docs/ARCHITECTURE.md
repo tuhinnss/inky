@@ -316,8 +316,8 @@ canvas. Each symbol is redrawn from its stroke coordinates straight into a `Floa
 Redrawing from vectors is what makes recognition independent of things that have nothing to do
 with what was written: device pixel ratio, browser zoom, ink colour, the paper grid, the answer
 drawn next to the equation, and the size of the handwriting. A test confirms the model reads every
-symbol identically at handwriting sizes from 24 px to 320 px and at every pen width the toolbar
-offers.
+symbol identically at handwriting sizes from 24 px to 320 px and at pen widths across the whole
+range of the size slider, 1.5 px to 12 px.
 
 ### Combining the model with geometry
 
@@ -587,7 +587,7 @@ What makes that hold:
 
 ## 9. Tests
 
-346 tests in 15 files, run with Vitest in Node. `npm test` takes about two seconds.
+366 tests in 16 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area              | Tests | What is covered                                                                                                                                                           |
 | ----------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -596,10 +596,11 @@ What makes that hold:
 | Layout            | 36    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence                                                                             |
 | Ink               | 38    | Undo/redo stack behaviour, gesture folding, both erasers                                                                                                                  |
 | Rasteriser        | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                  |
-| Model integration | 28    | The bundled ONNX model on our rasteriser: every symbol, five handwriting sizes, four pen widths                                                                           |
+| Model integration | 30    | The bundled ONNX model on our rasteriser: every symbol, five handwriting sizes, six pen widths across the slider's range                                                  |
 | Geometry fusion   | 21    | Stroke arrangements, fusion weights, the decimal point                                                                                                                    |
 | Pipeline          | 50    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol                                                                                      |
 | Answer overlay    | 12    | What is written after the "=", how dark, and that the doubt mark fits inside the write-on reveal and on the page                                                          |
+| Tool sizes        | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                          |
 
 Two choices are worth noting. Layout and recognition are tested with **synthetic handwriting**: a
 fixture that turns a string such as `7.5÷2-60=` into stroke paths with controllable size, spacing

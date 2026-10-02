@@ -66,11 +66,12 @@
   transition: transform 140ms ease-out;
 }
 
-.tool[aria-pressed='true']::before {
+.tool[aria-pressed='true']::before,
+.tool[aria-expanded='true']::before {
   transform: rotate(-4deg) scaleX(1);
 }
 
-.tool:hover:not(:disabled, [aria-pressed='true'])::before {
+.tool:hover:not(:disabled, [aria-pressed='true'], [aria-expanded='true'])::before {
   transform: rotate(-4deg) scaleX(1);
   opacity: 0.35;
 }
@@ -86,19 +87,96 @@
   cursor: default;
 }
 
-.width-dot {
-  width: var(--dot);
-  height: var(--dot);
+/* --------------------------------------------------------------- the tool size */
+
+/* The size of the tool in hand, drawn as the mark it makes: a blot of ink for the pen,
+   the outline of the tip for the eraser. `--size` is set on the toolbar in CSS pixels. */
+.size-dot {
+  display: block;
+  width: var(--size);
+  height: var(--size);
   border-radius: 50%;
-  background: currentColor;
+  background: var(--ink);
 }
 
-.tool-width {
-  height: 32px;
+.toolbar[data-sizing='eraser'] .size-dot {
+  border: 1.25px solid rgb(200 80 105 / 90%);
+  background: rgb(232 121 140 / 14%);
 }
 
-.tool-width::before {
-  inset: 5px 6px;
+/* On the button the dot is a reminder, not a measurement: large sizes stop at the edge. */
+.tool-size .size-dot {
+  width: min(var(--size), 30px);
+  height: min(var(--size), 30px);
+}
+
+/* In the panel the pen is shown as a line of ink, which says more than a dot does. */
+.size-stroke {
+  display: none;
+  stroke: var(--ink);
+  stroke-width: var(--size);
+}
+
+.toolbar[data-sizing='pen'] .size-stroke {
+  display: block;
+}
+
+.toolbar[data-sizing='pen'] .size-preview .size-dot {
+  display: none;
+}
+
+/* A slip of paper beside the margin. Fixed, so the scrolling toolbar cannot clip it;
+   Toolbar.ts sets left and top each time it opens. */
+.size-panel {
+  position: fixed;
+  z-index: 10;
+  display: grid;
+  gap: 4px;
+  width: 204px;
+  padding: 10px 14px 14px;
+  border: 1.5px solid color-mix(in srgb, var(--graphite) 45%, transparent);
+  border-radius: 3px 7px 4px 8px;
+  background: var(--paper);
+  box-shadow:
+    0 8px 22px rgb(28 43 110 / 14%),
+    0 1px 2px rgb(28 43 110 / 12%);
+  font-family: var(--hand);
+  font-weight: 300;
+  color: var(--graphite);
+}
+
+.size-panel[hidden] {
+  display: none;
+}
+
+.size-head {
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.3;
+}
+
+/* Tall enough for the largest eraser, so the panel never changes size under the pointer. */
+.size-preview {
+  display: grid;
+  place-items: center;
+  height: 88px;
+}
+
+.size-slider {
+  width: 100%;
+  height: 28px; /* a comfortable target for a finger */
+  margin: 0;
+  accent-color: var(--ink);
+  cursor: pointer;
+  touch-action: none; /* dragging the thumb must not scroll or zoom the page */
+}
+
+.size-slider:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+  border-radius: 6px;
 }
 
 .wordmark {
@@ -205,11 +283,6 @@
 
   .tool {
     width: 40px;
-  }
-
-  .tool-width {
-    width: 30px;
-    height: 44px;
   }
 
   .wordmark {

@@ -2,12 +2,12 @@ import { InkCanvas, type Tool } from '../canvas/InkCanvas';
 import { History, StrokeEdit, StrokeStore } from '../ink';
 import { RecognitionClient } from '../recognition/RecognitionClient';
 import { AnswerOverlay } from '../ui/AnswerOverlay';
-import { PEN_WIDTHS, Toolbar } from '../ui/Toolbar';
+import { ERASER_SIZE, PEN_SIZE, snapSize, stepSize } from '../ui/sizes';
+import { Toolbar } from '../ui/Toolbar';
 import type { Equation } from './equations';
 import { RecognitionPipeline, type PipelineStats } from './RecognitionPipeline';
 
 const INK_COLOR = '#1c2b6e';
-const ERASER_RADIUS = 11;
 
 /** Composition root: builds every part of the app and connects them. */
 export class App {
@@ -28,7 +28,9 @@ export class App {
   private noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
   private tool: Tool = 'pen';
-  private penWidth: number = PEN_WIDTHS[1];
+  private penWidth = PEN_SIZE.initial;
+  /** Diameter of the eraser tip, shared by both erasers. */
+  private eraserSize = ERASER_SIZE.initial;
 
   constructor(root: HTMLElement) {
     this.notebook = document.createElement('div');
@@ -36,7 +38,8 @@ export class App {
 
     this.toolbar = new Toolbar({
       selectTool: (tool) => this.setTool(tool),
-      selectPenWidth: (width) => this.setPenWidth(width),
+      setPenWidth: (width) => this.setPenWidth(width),
+      setEraserSize: (size) => this.setEraserSize(size),
       undo: () => this.history.undo(),
       redo: () => this.history.redo(),
       clear: () => this.clear(),
@@ -65,7 +68,7 @@ export class App {
     this.canvas = new InkCanvas(page, this.store, this.history, {
       inkColor: INK_COLOR,
       penWidth: this.penWidth,
-      eraserRadius: ERASER_RADIUS,
+      eraserRadius: this.eraserSize / 2,
     });
     this.canvas.setTool(this.tool);
 
@@ -133,10 +136,21 @@ export class App {
   }
 
   private setPenWidth(width: number): void {
-    this.penWidth = width;
-    this.canvas.setPenWidth(width);
-    // Choosing a width means you are about to write.
-    this.setTool('pen');
+    this.penWidth = snapSize(PEN_SIZE, width);
+    this.canvas.setPenWidth(this.penWidth);
+    this.refresh();
+  }
+
+  private setEraserSize(size: number): void {
+    this.eraserSize = snapSize(ERASER_SIZE, size);
+    this.canvas.setEraserRadius(this.eraserSize / 2);
+    this.refresh();
+  }
+
+  /** Makes the tool in hand a number of steps thicker or thinner. */
+  private nudgeSize(steps: number): void {
+    if (this.tool === 'pen') this.setPenWidth(stepSize(PEN_SIZE, this.penWidth, steps));
+    else this.setEraserSize(stepSize(ERASER_SIZE, this.eraserSize, steps));
   }
 
   /** Clearing is an ordinary undoable edit, so it needs no "are you sure?" dialog. */
@@ -149,6 +163,7 @@ export class App {
     this.toolbar.update({
       tool: this.tool,
       penWidth: this.penWidth,
+      eraserSize: this.eraserSize,
       canUndo: this.history.canUndo,
       canRedo: this.history.canRedo,
       canClear: this.store.size > 0,
@@ -175,5 +190,7 @@ export class App {
     if (key === 'p') this.setTool('pen');
     else if (key === 'e') this.setTool('stroke-eraser');
     else if (key === 'r') this.setTool('pixel-eraser');
+    else if (key === '[') this.nudgeSize(-1);
+    else if (key === ']') this.nudgeSize(1);
   }
 }

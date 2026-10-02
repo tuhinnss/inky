@@ -59,7 +59,7 @@ export class InkCanvas {
   private tool: Tool = 'pen';
   private penWidth: number;
   private readonly inkColor: string;
-  private readonly eraserRadius: number;
+  private eraserRadius: number;
 
   private gesture: Gesture | null = null;
   private hover: Position | null = null;
@@ -145,6 +145,12 @@ export class InkCanvas {
 
   setPenWidth(width: number): void {
     this.penWidth = width;
+  }
+
+  setEraserRadius(radius: number): void {
+    this.eraserRadius = radius;
+    // The tip under the pointer is drawn at its true size, so it has to be redrawn.
+    this.requestFrame('live');
   }
 
   /** Called with `true` when a pointer goes down on the page and `false` when it lifts. */

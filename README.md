@@ -49,17 +49,19 @@ symbol it read, the answer is fainter and the doubtful symbol is underlined with
 labelled with what it was taken to be. When an expression does not make sense, the symbol at fault
 is marked and a note says why.
 
-| Tool, in the margin            | Key      |
-| ------------------------------ | -------- |
-| Pen                            | `P`      |
-| Erase whole strokes            | `E`      |
-| Rub out part of a stroke       | `R`      |
-| Pen width, four sizes          |          |
-| Undo                           | `Ctrl+Z` |
-| Redo                           | `Ctrl+Y` |
-| Clear the page (can be undone) |          |
+| Tool, in the margin                        | Key      |
+| ------------------------------------------ | -------- |
+| Pen                                        | `P`      |
+| Erase whole strokes                        | `E`      |
+| Rub out part of a stroke                   | `R`      |
+| Size of the pen or the eraser, on a slider | `[` `]`  |
+| Undo                                       | `Ctrl+Z` |
+| Redo                                       | `Ctrl+Y` |
+| Clear the page (can be undone)             |          |
 
-The eraser end of a stylus erases without changing tool.
+The size button shows the size of whichever tool is in hand. Press it for a slider with a
+true-size preview: pen width from 1.5 to 12 px, eraser tip from 8 to 80 px. The eraser end of a
+stylus erases without changing tool.
 
 ## How it works
 
@@ -105,7 +107,7 @@ scripts are in [scripts/model](scripts/model).
 | `npm run dev`       | Start the dev server                               |
 | `npm run build`     | Type-check, then build to `dist/`                  |
 | `npm run preview`   | Serve the production build locally                 |
-| `npm test`          | Run the 346 unit and integration tests once        |
+| `npm test`          | Run the 366 unit and integration tests once        |
 | `npm run typecheck` | Type-check without building                        |
 | `npm run lint`      | Lint the source. Fails on `eval` or `new Function` |
 | `npm run format`    | Format the source with Prettier                    |

@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { MODEL_SYMBOLS } from '../../src/recognition/model';
+import { PEN_SIZE } from '../../src/ui/sizes';
 import { ink } from '../fixtures/ink';
 import { ascii, classify, rasterize } from './helpers';
 
@@ -39,9 +40,13 @@ describe('bundled model on our rasteriser', () => {
     expect(await misses({ size, wobble: 0 })).toEqual([]);
   });
 
-  it.each([2.5, 4, 6, 9])('is unaffected by the pen width setting (%s px)', async (penWidth) => {
-    expect(await misses({ size: 80, wobble: 0, penWidth })).toEqual([]);
-  });
+  // The ends and the middle of the range the size slider offers.
+  it.each([PEN_SIZE.min, 2.5, PEN_SIZE.initial, 6, 9, PEN_SIZE.max])(
+    'is unaffected by the pen width setting (%s px)',
+    async (penWidth) => {
+      expect(await misses({ size: 80, wobble: 0, penWidth })).toEqual([]);
+    },
+  );
 
   it('gives the same answer wherever on the page the symbol is', async () => {
     const [near] = ink('7', { x: 0, y: 0, size: 80, wobble: 0 });

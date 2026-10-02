@@ -23,3 +23,11 @@ export const icons = {
     '<path d="M6 3h8l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/>',
   ),
 } as const;
+
+/**
+ * A short flourish for the pen-size panel. Unlike the icons it is drawn at one SVG unit
+ * per CSS pixel and takes its stroke width from the stylesheet, so its line is exactly as
+ * thick as the pen will write.
+ */
+export const penSample =
+  '<svg class="size-stroke" viewBox="0 0 150 60" width="150" height="60" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 38c20-26 36-26 56-8s38 18 62-10"/></svg>';
