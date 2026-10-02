@@ -87,7 +87,7 @@ export class InkCanvas {
     this.eraserRadius = options.eraserRadius;
 
     this.ink = new CanvasLayer('layer layer-ink');
-    this.live = new CanvasLayer('layer layer-live', { lowLatency: true });
+    this.live = new CanvasLayer('layer layer-live');
     this.overlay = new CanvasLayer('layer layer-overlay');
     host.append(this.ink.element, this.overlay.element, this.live.element);
 

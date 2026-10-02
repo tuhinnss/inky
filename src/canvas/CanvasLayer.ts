@@ -1,13 +1,5 @@
 import { drawScale, resolveBackingSize, type Size } from './coords';
 
-export interface LayerOptions {
-  /**
-   * Asks the browser to present this canvas without waiting for the compositor, which
-   * removes a frame or so of latency. Worth it only for the layer under the pen tip.
-   */
-  lowLatency?: boolean;
-}
-
 /**
  * One canvas element, sized for the device and scaled so that drawing code can work in
  * page (CSS pixel) coordinates and never think about the device pixel ratio.
@@ -17,13 +9,15 @@ export class CanvasLayer {
   readonly ctx: CanvasRenderingContext2D;
   private cssSize: Size = { width: 0, height: 0 };
 
-  constructor(className: string, options: LayerOptions = {}) {
+  constructor(className: string) {
     this.element = document.createElement('canvas');
     this.element.className = className;
 
-    const ctx = this.element.getContext('2d', {
-      desynchronized: options.lowLatency === true,
-    });
+    // A plain context, deliberately. The `desynchronized` hint would shave a frame of
+    // latency off the layer under the pen, but on many Android tablets a canvas in that
+    // mode cannot be transparent: it is composited as an opaque black sheet, and these
+    // layers are stacked on top of the page.
+    const ctx = this.element.getContext('2d');
     if (!ctx) throw new Error('2D canvas is not available in this browser');
     this.ctx = ctx;
   }

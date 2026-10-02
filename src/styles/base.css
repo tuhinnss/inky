@@ -13,7 +13,9 @@
   --margin-width: 64px;
   --hand: 'Kalam', 'Segoe Print', 'Bradley Hand', cursive;
 
-  color-scheme: light;
+  /* `only` also tells browsers that darken pages by themselves to leave this one alone:
+     a notebook page forced dark is black paper with dark blue ink. */
+  color-scheme: only light;
 }
 
 *,

@@ -444,8 +444,10 @@ Pointer Events give one code path for mouse, touch and stylus.
 - **Palm rejection.** Touches are ignored for 400 ms after a pen lifts, and only one pointer draws
   at a time.
 - The eraser end of a stylus erases without changing tool.
-- The live canvas asks for a `desynchronized` context, which lets the browser present it without
-  waiting for the compositor.
+- The canvases use ordinary contexts. An earlier version asked for a `desynchronized` (low-latency)
+  context for the layer under the pen. On an Android tablet that layer came out as an opaque black
+  sheet over the whole page, because a canvas in that mode cannot always be transparent there. One
+  frame of latency was not worth a black page.
 
 ### Smooth ink
 
