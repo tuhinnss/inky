@@ -22,7 +22,7 @@ export interface StrokeRecord {
 export interface SymbolRecord {
   /** Ids of the strokes grouped into this symbol. */
   strokes: number[];
-  kind: 'dot' | 'shape';
+  kind: 'dot' | 'shape' | 'rule';
   read: string;
   confidence: number;
 }

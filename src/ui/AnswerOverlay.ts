@@ -1,6 +1,8 @@
 import type { Equation } from '../app/equations';
 import type { CanvasLayer } from '../canvas/CanvasLayer';
 import type { Bounds } from '../ink';
+import type { Line } from '../layout';
+import type { Reading } from '../recognition/interpret';
 
 /** Pencil graphite, as `r, g, b` for use with varying opacity. */
 const GRAPHITE = '74, 78, 87';
@@ -149,18 +151,26 @@ export class AnswerOverlay {
     };
     let { width, extent } = measure();
 
-    // Running off the right edge: first write smaller, then drop below the line.
-    const room = this.layer.width - x - 10;
-    if (extent > room) {
-      const fitted = Math.max(size * 0.55, (size * room) / extent);
-      if ((extent * fitted) / size <= room) {
-        size = fitted;
-      } else {
-        size *= 0.7;
-        x = Math.max(8, Math.min(x, this.layer.width - extent * 0.7 - 10));
-        y = line.bounds.maxY + size * 0.75;
+    if (line.column) {
+      // Under the rule, where the answer of a column sum is written, with its last digit
+      // under the last digits of the rows above.
+      const right = Math.max(...line.column.rows.map((row) => row.bounds.maxX));
+      x = Math.max(8, Math.min(right - width, this.layer.width - extent - 10));
+      y = line.column.rule.bounds.maxY + line.height * 0.2 + size / 2;
+    } else {
+      // Running off the right edge: first write smaller, then drop below the line.
+      const room = this.layer.width - x - 10;
+      if (extent > room) {
+        const fitted = Math.max(size * 0.55, (size * room) / extent);
+        if ((extent * fitted) / size <= room) {
+          size = fitted;
+        } else {
+          size *= 0.7;
+          x = Math.max(8, Math.min(x, this.layer.width - extent * 0.7 - 10));
+          y = line.bounds.maxY + size * 0.75;
+        }
+        ({ width, extent } = measure());
       }
-      ({ width, extent } = measure());
     }
 
     ctx.save();
@@ -181,49 +191,90 @@ export class AnswerOverlay {
     ctx.restore();
   }
 
-  /** A dotted pencil underline, and what was read, beneath each doubtful symbol. */
+  /** What was read beneath, or beside, each doubtful symbol. */
   private drawDoubts(ctx: CanvasRenderingContext2D, equation: Equation): void {
     const { line, readings } = equation;
-    const size = Math.max(13, line.height * 0.3);
+    if (!line.column) {
+      this.drawRowDoubts(ctx, line, readings);
+      return;
+    }
+    // In a column the next row is directly underneath, so the note goes out to the side.
+    const beside = line.bounds.maxX + line.height * 0.3;
+    let first = 0;
+    for (const row of line.column.rows) {
+      this.drawRowDoubts(ctx, row, readings.slice(first, first + row.symbols.length), beside);
+      first += row.symbols.length;
+    }
+  }
 
-    line.symbols.forEach((symbol, index) => {
+  /**
+   * A dotted pencil underline beneath each doubtful symbol of one row of writing, with
+   * what it was taken to be.
+   * @param beside if given, the notes are written at this x, level with the row, instead
+   *   of under their symbols.
+   */
+  private drawRowDoubts(
+    ctx: CanvasRenderingContext2D,
+    row: Line,
+    readings: readonly Reading[],
+    beside?: number,
+  ): void {
+    const size = Math.max(13, row.height * 0.3);
+    const y = row.bounds.maxY + row.height * (beside === undefined ? 0.14 : 0.07);
+    const notes: string[] = [];
+
+    ctx.save();
+    ctx.strokeStyle = `rgba(${GRAPHITE}, 0.7)`;
+    ctx.fillStyle = `rgba(${GRAPHITE}, 0.75)`;
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([1, 5]);
+    ctx.font = font(size);
+
+    row.symbols.forEach((symbol, index) => {
       const reading = readings[index];
       if (!reading || reading.confidence >= LOW_CONFIDENCE) return;
 
-      const y = line.bounds.maxY + line.height * 0.14;
-      ctx.save();
-      ctx.strokeStyle = `rgba(${GRAPHITE}, 0.7)`;
-      ctx.lineWidth = 1.5;
-      ctx.lineCap = 'round';
-      ctx.setLineDash([1, 5]);
       ctx.beginPath();
       ctx.moveTo(symbol.bounds.minX - 2, y);
       ctx.lineTo(symbol.bounds.maxX + 2, y);
       ctx.stroke();
 
-      ctx.font = font(size);
+      const note = `${reading.symbol === '-' ? '−' : reading.symbol}?`;
+      if (beside !== undefined) {
+        notes.push(note);
+        return;
+      }
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillStyle = `rgba(${GRAPHITE}, 0.75)`;
-      ctx.fillText(
-        `${reading.symbol === '-' ? '−' : reading.symbol}?`,
-        (symbol.bounds.minX + symbol.bounds.maxX) / 2,
-        y + 3,
-      );
-      ctx.restore();
+      ctx.fillText(note, (symbol.bounds.minX + symbol.bounds.maxX) / 2, y + 3);
     });
+
+    if (beside !== undefined && notes.length > 0) {
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(notes.join(' '), beside, (row.bounds.minY + row.bounds.maxY) / 2);
+    }
+    ctx.restore();
   }
 
   /** For a malformed line: a zigzag under the symbol at fault and a note saying why. */
   private drawErrorNote(ctx: CanvasRenderingContext2D, equation: Equation): void {
-    const { evaluation, line } = equation;
+    const { evaluation, line, sources } = equation;
     if (evaluation?.status !== 'error') return;
 
-    // The position is an index into the expression, which has one character per symbol.
-    // Past the end means "something is missing here", which is at the "=".
-    const index = Math.min(evaluation.error.position, line.symbols.length - 1);
+    // The position is an index into the expression. Past the end means "something is
+    // missing here", which is at the "=". On a line of writing each character is a
+    // symbol; for a column sum `sources` says which symbol each character came from.
+    const position = Math.min(
+      evaluation.error.position,
+      (sources?.length ?? line.symbols.length) - 1,
+    );
+    const index = Math.min(sources ? sources[position] : position, line.symbols.length - 1);
     const at: Bounds = line.symbols[index].bounds;
-    const y = line.bounds.maxY + line.height * 0.16;
+    // In a column the zigzag goes right under the symbol and the note under the answer.
+    const y = (line.column ? at.maxY : line.bounds.maxY) + line.height * 0.16;
+    const noteY = line.column ? line.bounds.maxY + line.height * 0.95 : y + 9;
 
     ctx.save();
     ctx.strokeStyle = `rgba(${GRAPHITE}, 0.8)`;
@@ -246,9 +297,12 @@ export class AnswerOverlay {
     ctx.fillStyle = `rgba(${GRAPHITE}, 0.8)`;
     const width = ctx.measureText(evaluation.error.message).width;
     // Keep the note on the page even when the fault is near the right edge.
-    const x = Math.max(8, Math.min(left, this.layer.width - width - 10));
+    const x = Math.max(
+      8,
+      Math.min(line.column ? line.bounds.minX : left, this.layer.width - width - 10),
+    );
     ctx.textAlign = 'left';
-    ctx.fillText(evaluation.error.message, x, y + 9);
+    ctx.fillText(evaluation.error.message, x, noteY);
     ctx.restore();
   }
 }

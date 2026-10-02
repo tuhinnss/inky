@@ -41,6 +41,8 @@ appears about a third of a second after you stop writing.
 - Standard precedence applies: `18 + 4 × 3 =` gives 30.
 - Negative numbers work: `3 × −2 =` gives −6.
 - Dividing by zero gives `Undefined`.
+- Sums can also be written as a column: numbers one under another, the operator at the left,
+  and a line drawn underneath. The answer is written under the line.
 - Write as many equations on the page as you like. Each is worked out separately.
 - Erase a number and write another in its place, and the answer updates.
 
@@ -107,7 +109,7 @@ scripts are in [scripts/model](scripts/model).
 | `npm run dev`         | Start the dev server                                                                    |
 | `npm run build`       | Type-check, then build to `dist/`                                                       |
 | `npm run preview`     | Serve the production build locally                                                      |
-| `npm test`            | Run the 396 unit and integration tests once                                             |
+| `npm test`            | Run the 457 unit and integration tests once                                             |
 | `npm run typecheck`   | Type-check without building                                                             |
 | `npm run lint`        | Lint the source. Fails on `eval` or `new Function`                                      |
 | `npm run format`      | Format the source with Prettier                                                         |

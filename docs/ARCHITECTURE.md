@@ -294,6 +294,47 @@ Dots are handled separately, because overlap gives the wrong answer for them in 
 Every symbol gets a key: the ids of its strokes. Because strokes are immutable and ids are never
 reused, two symbols with the same key are guaranteed to be the same ink.
 
+### Sums written as a column
+
+Arithmetic is also written the way it is taught: numbers one under another, the operator at the
+left, and a line drawn underneath.
+
+```
+     8
+     7        reads as  8 + 7 + 3 =   and the answer, 18, is written under the line
+  +  3
+  ‾‾‾‾‾
+```
+
+The line, the _rule_, is what makes it a sum, as `=` does on a line of writing. It is also the one
+stroke that the steps above cannot handle: lying under a whole row, it overlaps every symbol above
+it and would be merged with them. So rules are found first, before any lines are formed.
+
+1. **Candidates.** A candidate is a flat stroke with no writing level with it. A minus sign has
+   digits either side, the bars of `=` have the sum to their left, the bar of `+` has its upright
+   through it; a rule sits below a row with nothing beside it. Bars that continue one another end
+   to end are joined, since a long rule is often drawn in two goes.
+2. **Rows.** For each candidate, only the ink directly over it is grouped into lines, by itself.
+   That keeps rows apart whatever is written beside the column. Each row then takes in strokes
+   standing close beside it, which picks up an operator written to the left of where the rule
+   starts. Starting at the rule, the rows are climbed one by one for as long as each sits directly
+   on the last. The climb stops at a gap, at another rule, or at a line containing an `=`.
+3. **Verdict.** A candidate with at least two rows above it, wide enough to have been meant as a
+   rule, is a column. The rest go back to being ordinary strokes, and because that changes what
+   the remaining candidates may claim, the search is repeated without them. The set only shrinks,
+   so this ends; in practice it runs once or twice.
+
+Whatever is left on the page is then laid out as ordinary lines. A column comes out of layout as a
+line like any other, with its symbols listed row by row and the rule last, so caching, versioning
+and stale-result handling apply to it unchanged. Its rows are read separately, so that a decimal
+point is judged against its own row and not against the whole column.
+
+The rows are then written out as one expression for the math engine. The convention is the
+schoolbook one: an operator at the left of a row joins that row to those above; a row with none
+takes the next operator found below it, so a single `+` on the last row adds the whole column; a
+column with no operator at all is added up. A row that is itself a calculation is bracketed, so
+`2+3` over `×4` is 20. The rule is never sent to the model: it is the `=` by position alone.
+
 ### Step 4: stroke coordinates to tensor
 
 The model wants one 64×64 greyscale image per symbol. We do **not** read pixels back from the
@@ -613,7 +654,7 @@ What makes that hold:
 
 ## 9. Tests
 
-396 tests in 18 files, run with Vitest in Node. `npm test` takes about two seconds.
+457 tests in 20 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area              | Tests | What is covered                                                                                                                                                           |
 | ----------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -624,8 +665,9 @@ What makes that hold:
 | Rasteriser        | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                  |
 | Model integration | 30    | The bundled ONNX model on our rasteriser: every symbol, five handwriting sizes, six pen widths across the slider's range                                                  |
 | Geometry fusion   | 21    | Stroke arrangements, fusion weights, the decimal point                                                                                                                    |
-| Pipeline          | 50    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol                                                                                      |
-| Answer overlay    | 12    | What is written after the "=", how dark, and that the doubt mark fits inside the write-on reveal and on the page                                                          |
+| Pipeline          | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                       |
+| Column sums       | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                            |
+| Answer overlay    | 18    | What is written after the "=" or under a rule, how dark, and that the doubt mark fits inside the write-on reveal and on the page                                          |
 | Tool sizes        | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                          |
 | Page snapshots    | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                          |
 | Evaluation data   | 8     | Reading pen trajectory files for the real-handwriting measurement in section 8                                                                                            |
@@ -645,7 +687,9 @@ recognition would fail the build.
 - **Symbols must not overlap horizontally.** Segmentation is by horizontal overlap, so digits
   written touching or on top of each other are read as one symbol. Cursive-style joined digits
   are not supported.
-- **One line per equation.** Fractions, exponents and expressions that wrap are out of scope.
+- **Two layouts only: a line ending in `=`, or a column over a rule.** Fractions, exponents,
+  long division and expressions that wrap are out of scope. In a column, carries or working
+  written among the rows would be read as part of them.
 - **No parentheses.** The parser handles them; the model has no class for them.
 - **A dot is only ever a decimal point.** A stray speck low on the line will be read as one.
 - **The answer does not avoid ink.** It is drawn to the right of the `=`, or below the line when

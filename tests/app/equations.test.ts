@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EquationTracker, isReadable, readEquation } from '../../src/app/equations';
 import { layoutPage, segmentLine, type Line } from '../../src/layout';
 import { MODEL_SYMBOLS, type ModelSymbol } from '../../src/recognition/model';
-import { after, ink, strokesOf, type InkSymbol } from '../fixtures/ink';
+import { after, ink, inkColumn, strokesOf, type InkSymbol } from '../fixtures/ink';
 
 /** A model output that is `confidence` sure of `symbol`. */
 function sure(symbol: string, confidence = 0.99): Float32Array {
@@ -91,8 +91,116 @@ describe('reading an equation', () => {
   });
 });
 
+describe('reading a column sum', () => {
+  /** Lays out a column and reads it as if the model had got every symbol right. */
+  function readColumn(rows: string[], options: Parameters<typeof inkColumn>[1] = {}) {
+    const written = inkColumn(rows, options);
+    const [line] = layoutPage(written.strokes);
+    const chars = written.rows.flat().map((symbol) => symbol.char);
+    const cache = new Map<string, Float32Array>();
+    line.symbols.forEach((symbol, i) => {
+      if (symbol.kind === 'shape') cache.set(symbol.key, sure(chars[i]));
+    });
+    return { line, cache, equation: readEquation({ id: 1, version: 1, line }, cache) };
+  }
+
+  it('adds up the example: 8, 7 and +3 over a rule', () => {
+    const { equation } = readColumn(['8', '7', '+3']);
+    expect(equation.expression).toBe('8+7+3=');
+    expect(equation.evaluation).toMatchObject({ status: 'ok', value: 18, text: '18' });
+  });
+
+  it('subtracts, multiplies and divides', () => {
+    expect(readColumn(['90', '-27']).equation.evaluation).toMatchObject({ value: 63 });
+    expect(readColumn(['12', '×3']).equation.evaluation).toMatchObject({ value: 36 });
+    expect(readColumn(['84', '÷4']).equation.evaluation).toMatchObject({ value: 21 });
+  });
+
+  it('reads a decimal point against its own row', () => {
+    const { equation } = readColumn(['7.5', '+2.25']);
+    expect(equation.expression).toBe('7.5+2.25=');
+    expect(equation.evaluation).toMatchObject({ status: 'ok', value: 9.75 });
+    // A point sits low on its row. Judged against the whole column, the one in the
+    // first row would be near the top and look like a stray mark.
+    const points = equation.readings.filter((reading) => reading.symbol === '.');
+    expect(points.map((reading) => reading.confidence)).toEqual([0.95, 0.95]);
+  });
+
+  it('gives one reading per symbol, the rule standing for "="', () => {
+    const { equation, line } = readColumn(['8', '7', '+3']);
+    expect(equation.readings).toHaveLength(line.symbols.length);
+    expect(equation.readings.map((reading) => reading.symbol)).toEqual(['8', '7', '+', '3', '=']);
+  });
+
+  it('says which symbol each character of the expression came from', () => {
+    const { equation, line } = readColumn(['8', '7', '+3']);
+    expect(equation.sources).toHaveLength(equation.expression.length);
+    expect(equation.sources?.[equation.expression.length - 1]).toBe(line.symbols.length - 1);
+  });
+
+  it('does not work anything out before the rule is drawn', () => {
+    const written = inkColumn(['8', '7', '+3'], { rule: false });
+    const lines = layoutPage(written.strokes);
+    const cache = new Map<string, Float32Array>();
+    const chars = written.rows.flat().map((symbol) => symbol.char);
+    lines
+      .flatMap((line) => line.symbols)
+      .forEach((symbol, i) => cache.set(symbol.key, sure(chars[i])));
+
+    const equations = lines.map((line, i) => readEquation({ id: i, version: 1, line }, cache));
+    expect(equations.map((equation) => equation.expression)).toEqual(['8', '7', '+3']);
+    expect(equations.every((equation) => equation.evaluation === null)).toBe(true);
+  });
+
+  it('reports Undefined for a division by zero', () => {
+    expect(readColumn(['9', '÷0']).equation.evaluation).toMatchObject({ status: 'undefined' });
+  });
+
+  it('reports a column that makes no sense as an error', () => {
+    expect(readColumn(['8', '++3']).equation.evaluation).toMatchObject({ status: 'error' });
+  });
+
+  it('needs the model for the digits but not for the rule', () => {
+    const { line, cache } = readColumn(['12', '+34']);
+    expect(isReadable(line, cache)).toBe(true);
+    expect(cache.has(line.symbols[line.symbols.length - 1].key)).toBe(false); // the rule
+
+    cache.delete(line.symbols[0].key);
+    expect(isReadable(line, cache)).toBe(false);
+  });
+
+  it('is only as confident as its least certain symbol', () => {
+    const { line, cache } = readColumn(['8', '7', '+3']);
+    cache.set(line.symbols[1].key, sure('7', 0.5));
+    const equation = readEquation({ id: 1, version: 1, line }, cache);
+    expect(equation.confidence).toBeLessThan(0.6);
+  });
+
+  it('is unsettled by nothing in the rule: it is always read as "=" with certainty', () => {
+    const { equation } = readColumn(['8', '+3']);
+    expect(equation.readings[equation.readings.length - 1]).toEqual({
+      symbol: '=',
+      confidence: 1,
+    });
+  });
+});
+
 describe('EquationTracker', () => {
   const page = (...lines: InkSymbol[][]) => layoutPage(lines.flatMap(strokesOf));
+
+  it('keeps one identity for a column as rows and the rule are added', () => {
+    const tracker = new EquationTracker();
+    const open = inkColumn(['8', '7', '+3'], { rule: false });
+    const before = tracker.update(layoutPage(open.strokes));
+    expect(before).toHaveLength(3); // three separate lines so far
+
+    const closed = inkColumn(['8', '7', '+3']);
+    const rule = closed.rule!;
+    const after = tracker.update(layoutPage([...open.strokes, rule]));
+    expect(after).toHaveLength(1);
+    expect(before.map((line) => line.id)).toContain(after[0].id);
+    expect(after[0].version).toBe(2);
+  });
 
   it('numbers new equations and starts them at version 1', () => {
     const tracker = new EquationTracker();

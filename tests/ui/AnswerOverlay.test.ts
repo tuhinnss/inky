@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readEquation, type Equation } from '../../src/app/equations';
 import type { CanvasLayer } from '../../src/canvas/CanvasLayer';
-import { segmentLine } from '../../src/layout';
+import { layoutPage, segmentLine } from '../../src/layout';
 import { MODEL_SYMBOLS, type ModelSymbol } from '../../src/recognition/model';
 import {
   AnswerOverlay,
@@ -9,7 +9,7 @@ import {
   answerText,
   LOW_CONFIDENCE,
 } from '../../src/ui/AnswerOverlay';
-import { ink, strokesOf } from '../fixtures/ink';
+import { ink, inkColumn, strokesOf } from '../fixtures/ink';
 
 /** An equation as the pipeline would hand it over, read with the given confidence. */
 function equation(text: string, confidence = 1, x = 40): Equation {
@@ -32,6 +32,8 @@ interface Drawn {
   /** Left and right edge of the text, by the fake context's simple metrics. */
   left: number;
   right: number;
+  /** Where the text was put vertically, as given to fillText. */
+  y: number;
   /** The clip in force when the text was drawn. */
   clip: { left: number; right: number } | undefined;
 }
@@ -65,10 +67,10 @@ function fakeLayer(width: number) {
     stroke: () => undefined,
     setLineDash: () => undefined,
     measureText: (text: string) => ({ width: widthOf(text, ctx.font) }),
-    fillText: (text: string, x: number) => {
+    fillText: (text: string, x: number, y: number) => {
       const w = widthOf(text, ctx.font);
       const left = ctx.textAlign === 'center' ? x - w / 2 : x;
-      drawn.push({ text, left, right: left + w, clip: clips[clips.length - 1] });
+      drawn.push({ text, left, right: left + w, y, clip: clips[clips.length - 1] });
     },
   };
 
@@ -160,5 +162,72 @@ describe('drawing an answer', () => {
     for (const piece of show([sum], pageWidth).filter((d) => d.text === '30' || d.text === '?')) {
       expect(piece.right).toBeLessThanOrEqual(pageWidth);
     }
+  });
+});
+
+describe('drawing the answer of a column sum', () => {
+  /** A column read as if every symbol had been recognised with `confidence`. */
+  function column(rows: string[], confidence = 1): Equation {
+    const written = inkColumn(rows, { right: 400, y: 60, size: 80 });
+    const [line] = layoutPage(written.strokes);
+    const chars = written.rows.flat().map((symbol) => symbol.char as ModelSymbol);
+    const cache = new Map<string, Float32Array>();
+    line.symbols.forEach((symbol, i) => {
+      if (symbol.kind !== 'shape') return;
+      cache.set(
+        symbol.key,
+        Float32Array.from(MODEL_SYMBOLS, (s) => (s === chars[i] ? 1 : 0)),
+      );
+    });
+    return { ...readEquation({ id: 1, version: 1, line }, cache), confidence };
+  }
+
+  it('writes it under the rule', () => {
+    const sum = column(['8', '7', '+3']);
+    const answer = show([sum]).find((d) => d.text === '18');
+    expect(answer?.y).toBeGreaterThan(sum.line.column!.rule.bounds.maxY);
+  });
+
+  it('ends it under the last digits of the rows above', () => {
+    const sum = column(['125', '+48']);
+    const answer = show([sum]).find((d) => d.text === '173');
+    const digitsEnd = Math.max(...sum.line.column!.rows.map((row) => row.bounds.maxX));
+    expect(answer?.right).toBeCloseTo(digitsEnd, 0);
+  });
+
+  it('keeps a long answer on the page', () => {
+    const sum = column(['8', '÷0']); // "Undefined" is far wider than the column
+    for (const pageWidth of [1200, 430]) {
+      const answer = show([sum], pageWidth).find((d) => d.text === 'Undefined');
+      expect(answer?.left).toBeGreaterThanOrEqual(0);
+      expect(answer?.right).toBeLessThanOrEqual(pageWidth);
+    }
+  });
+
+  it('reveals the whole answer and its doubt mark', () => {
+    const drawn = show([column(['8', '7', '+3'], LOW_CONFIDENCE - 0.1)]);
+    for (const piece of drawn.filter((d) => d.text === '18' || d.text === '?')) {
+      expect(piece.clip?.left).toBeLessThanOrEqual(piece.left);
+      expect(piece.clip?.right).toBeGreaterThanOrEqual(piece.right);
+    }
+    expect(drawn.some((d) => d.text === '?')).toBe(true);
+  });
+
+  it('puts the note about a doubtful digit beside its row, not on the row below', () => {
+    const sum = column(['8', '7', '+3']);
+    sum.readings[1] = { symbol: '7', confidence: 0.4 };
+    const note = show([sum]).find((d) => d.text === '7?');
+    const [, second] = sum.line.column!.rows;
+    expect(note?.left).toBeGreaterThan(sum.line.bounds.maxX);
+    expect(note?.y).toBeGreaterThan(second.bounds.minY);
+    expect(note?.y).toBeLessThan(second.bounds.maxY);
+  });
+
+  it('writes the reason under a column that makes no sense', () => {
+    const sum = column(['8', '++3']);
+    const drawn = show([sum]);
+    expect(drawn.some((d) => d.text === '?')).toBe(true);
+    const note = drawn.find((d) => d.text.includes('needs a number'));
+    expect(note?.y).toBeGreaterThan(sum.line.bounds.maxY);
   });
 });

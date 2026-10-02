@@ -7,10 +7,11 @@ export interface SymbolGroup {
   strokes: Stroke[];
   bounds: Bounds;
   /**
-   * `dot`: a single tiny mark on its own. `shape`: everything else.
-   * Dots are never sent to the model (see ARCHITECTURE.md, "The decimal point").
+   * `dot`: a single tiny mark on its own. `rule`: the line drawn under a column sum.
+   * `shape`: everything else. Only shapes are sent to the model; dots and rules are
+   * recognised by geometry alone (see ARCHITECTURE.md, "The decimal point").
    */
-  kind: 'dot' | 'shape';
+  kind: 'dot' | 'shape' | 'rule';
   /**
    * Identifies this exact ink. Strokes are immutable and ids are never reused, so two
    * symbols with the same key are guaranteed to look the same, and a recognition
@@ -20,11 +21,23 @@ export interface SymbolGroup {
 }
 
 export interface Line {
-  /** Left to right. */
+  /** Left to right. For a column sum: row by row, top to bottom, then the rule. */
   symbols: SymbolGroup[];
   bounds: Bounds;
   /** Typical height of a digit on this line, in CSS px. The yardstick for everything. */
   height: number;
+  /**
+   * Set when this is a sum written as a column: numbers stacked one above the other
+   * with a rule drawn underneath. Each row is a line in its own right.
+   */
+  column?: Column;
+}
+
+export interface Column {
+  /** Top to bottom. */
+  rows: Line[];
+  /** The line drawn under the last row. It plays the part of the "=". */
+  rule: SymbolGroup;
 }
 
 /** A mark no larger than this fraction of the line height is a dot. */
