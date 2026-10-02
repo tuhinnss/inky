@@ -102,16 +102,17 @@ scripts are in [scripts/model](scripts/model).
 
 ## Scripts
 
-| Command             | What it does                                       |
-| ------------------- | -------------------------------------------------- |
-| `npm run dev`       | Start the dev server                               |
-| `npm run build`     | Type-check, then build to `dist/`                  |
-| `npm run preview`   | Serve the production build locally                 |
-| `npm test`          | Run the 388 unit and integration tests once        |
-| `npm run typecheck` | Type-check without building                        |
-| `npm run lint`      | Lint the source. Fails on `eval` or `new Function` |
-| `npm run format`    | Format the source with Prettier                    |
-| `npm run capture`   | Serve a build that can save handwriting (below)    |
+| Command               | What it does                                                                            |
+| --------------------- | --------------------------------------------------------------------------------------- |
+| `npm run dev`         | Start the dev server                                                                    |
+| `npm run build`       | Type-check, then build to `dist/`                                                       |
+| `npm run preview`     | Serve the production build locally                                                      |
+| `npm test`            | Run the 396 unit and integration tests once                                             |
+| `npm run typecheck`   | Type-check without building                                                             |
+| `npm run lint`        | Lint the source. Fails on `eval` or `new Function`                                      |
+| `npm run format`      | Format the source with Prettier                                                         |
+| `npm run capture`     | Serve a build that can save handwriting (below)                                         |
+| `npm run eval:digits` | Measure recognition on real pen-written digits ([scripts/eval](scripts/eval/README.md)) |
 
 ### Collecting real handwriting
 

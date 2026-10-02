@@ -552,6 +552,32 @@ From the model benchmark in section 2, under the same WASM runtime: 3.7 ms for o
 after the first stroke began; that includes writing the expression and the runtime finishing its
 start-up.
 
+### Accuracy on real handwriting
+
+The model's own test set is images, and the unit tests use synthetic strokes. To measure the
+path the app actually takes, strokes in and a symbol out, we ran it on the UCI pen digits data
+set: digits written with a stylus on a tablet and stored as pen trajectories. The figures are for
+its writer-independent test set, 3,498 digits by 14 people, none of whom the model has seen.
+
+| Measure                                                      | Result           |
+| ------------------------------------------------------------ | ---------------- |
+| Classifier alone, each digit's strokes given as one symbol   | 93.48% (3,270)   |
+| Whole path: layout groups the strokes, geometry weighs in    | 92.54% (3,237)   |
+| Digits that layout split into more than one symbol           | 36               |
+| Same test at 40 px and 160 px, and with pens from 2 to 12 px | 92.65% to 93.65% |
+| Misreads that the confidence indicator flags (below 0.6)     | 28.5%            |
+| Correct readings it flags                                    | 1.7%             |
+
+Two things follow. The result barely moves with writing size or pen width, so the rasteriser is
+doing its job and the gap to the 99.4% of the model's own test set is the model meeting writers
+unlike those it was trained on. And the errors are concentrated: 52 of the 228 are a `4` written
+in one stroke without lifting the pen, a form the training data did not contain, read as `9`.
+The next most common are `8` read as `0` (25), `9` as `3` (24) and `2` as `3` (19). `0`, `1`, `6`
+and `7` are all read correctly more than 98.8% of the time.
+
+The data set has digits only, so the operators are not covered by this measurement. It can be
+repeated with `npm run eval:digits`; see [scripts/eval](../scripts/eval/README.md).
+
 ### Memory
 
 Forty cycles of: write three equations, wait for answers, pixel-erase through one, stroke-erase
@@ -587,7 +613,7 @@ What makes that hold:
 
 ## 9. Tests
 
-388 tests in 17 files, run with Vitest in Node. `npm test` takes about two seconds.
+396 tests in 18 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area              | Tests | What is covered                                                                                                                                                           |
 | ----------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -602,6 +628,7 @@ What makes that hold:
 | Answer overlay    | 12    | What is written after the "=", how dark, and that the doubt mark fits inside the write-on reveal and on the page                                                          |
 | Tool sizes        | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                          |
 | Page snapshots    | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                          |
+| Evaluation data   | 8     | Reading pen trajectory files for the real-handwriting measurement in section 8                                                                                            |
 
 Two choices are worth noting. Layout and recognition are tested with **synthetic handwriting**: a
 fixture that turns a string such as `7.5÷2-60=` into stroke paths with controllable size, spacing
@@ -611,8 +638,10 @@ recognition would fail the build.
 
 ## 10. Limitations
 
-- **Accuracy has been measured on synthetic handwriting and on the model's own test set, not on
-  a study of real users.** The model's training data came from a small number of writers.
+- **About one real digit in thirteen is misread.** On pen-written digits from people the model
+  has not seen, the whole path reads 92.5% correctly (section 8). The model's training data came
+  from a small number of writers, and some common ways of writing a digit, a one-stroke `4`
+  above all, are not in it. Operators have been measured on synthetic handwriting only.
 - **Symbols must not overlap horizontally.** Segmentation is by horizontal overlap, so digits
   written touching or on top of each other are read as one symbol. Cursive-style joined digits
   are not supported.
