@@ -1,5 +1,5 @@
 /**
- * Synthetic handwriting: stroke paths for every symbol CalcInk recognises.
+ * Synthetic handwriting: stroke paths for every symbol Inky recognises.
  *
  * Tests need ink that looks like something a person wrote, in a form that is exact and
  * repeatable. Each glyph is a few hand-placed control points in a unit box (x to the

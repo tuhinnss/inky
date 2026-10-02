@@ -90,7 +90,7 @@ export class RecognitionPipeline {
     try {
       this.readPage();
     } finally {
-      performance.measure('calcink:read-page', { start: started, end: performance.now() });
+      performance.measure('inky:read-page', { start: started, end: performance.now() });
     }
   }
 
