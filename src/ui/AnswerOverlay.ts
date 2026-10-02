@@ -105,14 +105,27 @@ export class AnswerOverlay {
     let animating = false;
 
     for (const equation of this.equations) {
+      // A line written at an angle was turned level to be read, and its geometry is in
+      // that level frame. Turning the canvas the same way puts everything written back
+      // onto it along the line: the answer carries on in the direction of the writing.
+      const { tilt } = equation.line;
+      ctx.save();
+      if (tilt) {
+        ctx.translate(tilt.pivotX, tilt.pivotY);
+        ctx.rotate(tilt.angle);
+        ctx.translate(-tilt.pivotX, -tilt.pivotY);
+      }
+
       this.drawDoubts(ctx, equation);
       this.drawErrorNote(ctx, equation);
 
       const shown = this.shown.get(equation.id);
-      if (!shown) continue;
-      const progress = this.reducedMotion ? 1 : Math.min(1, (now - shown.since) / WRITE_MS);
-      if (progress < 1) animating = true;
-      this.drawAnswer(ctx, equation, shown.text, progress);
+      if (shown) {
+        const progress = this.reducedMotion ? 1 : Math.min(1, (now - shown.since) / WRITE_MS);
+        if (progress < 1) animating = true;
+        this.drawAnswer(ctx, equation, shown.text, progress);
+      }
+      ctx.restore();
     }
 
     if (animating) this.requestDraw();

@@ -127,3 +127,45 @@ export function shuffled<T>(items: readonly T[], seed = 7): T[] {
   }
   return out;
 }
+
+/**
+ * The same writing with the whole line turned: every symbol rotated with it, as when the
+ * page lies at an angle. Positive degrees rise to the right.
+ */
+export function turned(symbols: readonly InkSymbol[], degrees: number): Stroke[] {
+  const strokes = strokesOf(symbols);
+  const pivot = { x: leftEdge(symbols), y: strokes[0].points[0].y };
+  const cos = Math.cos((degrees * Math.PI) / 180);
+  const sin = Math.sin((degrees * Math.PI) / 180);
+  return strokes.map((stroke) =>
+    createStroke(
+      stroke.points.map((p) => ({
+        x: pivot.x + (p.x - pivot.x) * cos + (p.y - pivot.y) * sin,
+        y: pivot.y - (p.x - pivot.x) * sin + (p.y - pivot.y) * cos,
+        pressure: p.pressure,
+      })),
+      stroke.width,
+      stroke.color,
+    ),
+  );
+}
+
+/**
+ * The same writing climbing the page: every symbol stays upright and is moved up by the
+ * height of a sloped baseline under its middle. Positive degrees rise to the right.
+ */
+export function climbing(symbols: readonly InkSymbol[], degrees: number): Stroke[] {
+  const slope = Math.tan((degrees * Math.PI) / 180);
+  const start = leftEdge(symbols);
+  return symbols.flatMap((symbol) => {
+    const xs = symbol.strokes.flatMap((stroke) => stroke.points.map((p) => p.x));
+    const lift = slope * ((Math.min(...xs) + Math.max(...xs)) / 2 - start);
+    return symbol.strokes.map((stroke) =>
+      createStroke(
+        stroke.points.map((p) => ({ x: p.x, y: p.y - lift, pressure: p.pressure })),
+        stroke.width,
+        stroke.color,
+      ),
+    );
+  });
+}

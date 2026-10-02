@@ -5,10 +5,12 @@
  * rasteriser drifted away from what a model was trained on, this is where it would show.
  */
 import { describe, expect, it } from 'vitest';
+import { readEquation } from '../../src/app/equations';
 import { createStroke, type Stroke } from '../../src/ink';
+import { layoutPage } from '../../src/layout';
 import { MODEL_SYMBOLS } from '../../src/recognition/model';
 import { PEN_SIZE } from '../../src/ui/sizes';
-import { ink } from '../fixtures/ink';
+import { climbing, ink, strokesOf as strokesIn, turned } from '../fixtures/ink';
 import { REAL_DIGITS, type RealDigit } from '../fixtures/realDigits';
 import { ascii, classify, classifyAlone, rasterize } from './helpers';
 
@@ -135,5 +137,42 @@ describe('the digit helpers', () => {
       expect(single.symbol).toBe(together[i].symbol);
       expect(single.confidence).toBeCloseTo(together[i].confidence, 4);
     }
+  });
+});
+
+describe('lines that are not horizontal', () => {
+  /** Lays a page out, classifies it with the real models and reads each line. */
+  async function read(strokes: Stroke[]): Promise<string[]> {
+    const lines = layoutPage(strokes);
+    const shapes = lines.flatMap((line) =>
+      line.symbols.filter((symbol) => symbol.kind === 'shape'),
+    );
+    const predictions = await classify(shapes.map((symbol) => symbol.strokes));
+    const cache = new Map(shapes.map((symbol, i) => [symbol.key, predictions[i].probabilities]));
+    return lines.map((line, id) => {
+      const { expression, evaluation } = readEquation({ id, version: 1, line }, cache);
+      return `${expression} ${evaluation && evaluation.status !== 'error' ? evaluation.text : '-'}`;
+    });
+  }
+  const written = (text: string, seed = 1) => ink(text, { x: 100, y: 400, size: 70, seed });
+
+  // Turned this far, a "+" is on its way to being a "×" and the bars of "=" are no
+  // longer flat. Before lines were turned level, none of these were read.
+  it.each([20, 30, -20, -30])('reads a line turned by %i°', async (degrees) => {
+    expect(await read(turned(written('18+4×3='), degrees))).toEqual(['18+4×3= 30']);
+  });
+
+  it.each([25, -25])('reads decimals and division on a line turned by %i°', async (degrees) => {
+    expect(await read(turned(written('7.5÷2-60=', 3), degrees))).toEqual(['7.5÷2-60= −56.25']);
+  });
+
+  it.each([25, -25])('reads a line climbing at %i°, its symbols upright', async (degrees) => {
+    expect(await read(climbing(written('18+4×3='), degrees))).toEqual(['18+4×3= 30']);
+  });
+
+  it('reads a turned line and a level one on the same page', async () => {
+    const level = strokesIn(ink('96-27=', { x: 100, y: 40, size: 70, seed: 4 }));
+    const askew = turned(ink('12×12=', { x: 100, y: 560, size: 70, seed: 5 }), 25);
+    expect((await read([...level, ...askew])).sort()).toEqual(['12×12= 144', '96-27= 69']);
   });
 });

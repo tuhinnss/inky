@@ -339,6 +339,47 @@ A second pass rejoins fragments on the same row, judging gaps against the line's
 instead of the two neighbouring strokes. Without it, erasing the `3` from `4 × 3 =` would orphan
 the `=`: `×` and `=` are both short, and the hole between them is wider than either.
 
+### Lines that are not horizontal
+
+A line can slope in two ways, and they need opposite treatment
+([`tilt.ts`](../src/layout/tilt.ts)).
+
+It can **climb**: the symbols stay upright and each sits a little higher than the last, as
+handwriting drifts on unruled paper. Because lines are built link by link from neighbouring
+strokes, this already works, and nothing is done about it.
+
+Or it can be **turned**: the whole line, symbols and all, is written at an angle, as when the
+tablet lies askew. Then every symbol is rotated, and that changes what it is. A `+` turned 45° is
+a `×`. The bars of `=` and `−` stop being flat, which is how geometry knows them. Measured on
+synthetic handwriting, turned lines were read correctly up to 15° and not at all by 30°.
+
+So a turned line is turned back level before it is read:
+
+1. **Direction.** The direction of a line is the principal axis of its strokes' centres: the
+   straight line they stray from least. Dots are left out, since they sit off it.
+2. **Turned or climbing?** The `=` at the end tells them apart. Its bars are drawn along the
+   writer's own horizontal: level on a climbing line, sloped with the line on a turned one. A line
+   counts as turned when it slopes by 15° or more and its last two strokes are straight bars
+   running within 15° of the line's direction.
+3. **Level it.** Every stroke of the line is rotated back about the line's centre, and the steps
+   that follow see a level line. The copies keep their strokes' ids. The turn, in whole degrees,
+   is added to each symbol's cache key, because the same ink turned by a different amount is a
+   different picture to the model.
+
+The line then carries its tilt with it. When the answer is drawn, the canvas is rotated by the
+same amount first, so the answer continues along the line the writing follows.
+
+| Line written at | Turned, before | Turned, now | Climbing |
+| --------------- | -------------- | ----------- | -------- |
+| up to 15°       | read           | read        | read     |
+| 20°             | 7 of 14        | 14 of 14    | 14 of 14 |
+| 25°             | 4 of 14        | 14 of 14    | 14 of 14 |
+| 30°             | 0 of 14        | 14 of 14    | 14 of 14 |
+| 40°             | 0 of 14        | 9 of 14     | 11 of 14 |
+
+Each cell is seven sums, sloping up and sloping down. Beyond about 35° it is line grouping that
+fails, not reading: a steep line breaks into pieces.
+
 ### Step 3: symbols
 
 Within a line, strokes are merged into symbols by **horizontal overlap**. The strokes of one
@@ -772,24 +813,24 @@ What makes that hold:
 
 ## 9. Tests
 
-530 tests in 23 files, run with Vitest in Node. `npm test` takes about two seconds.
+571 tests in 24 files, run with Vitest in Node. `npm test` takes about two seconds.
 
-| Area                  | Tests | What is covered                                                                                                                                                                      |
-| --------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Math engine           | 89    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws            |
-| Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                                     |
-| Layout                | 36    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence                                                                                        |
-| Ink                   | 38    | Undo/redo stack behaviour, gesture folding, both erasers                                                                                                                             |
-| Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                             |
-| Model integration     | 44    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads                        |
-| Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                                      |
-| Geometry fusion       | 21    | Stroke arrangements, fusion weights, the decimal point                                                                                                                               |
-| Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                                  |
-| Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                                       |
-| Answer overlay        | 26    | What is written after the "=" or under a rule and how dark, the dotted line under a doubted symbol, the note for a line that makes no sense, and that no question mark is ever drawn |
-| Tool sizes            | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                                     |
-| Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                     |
-| Evaluation data       | 8     | Reading pen trajectory files for the real-handwriting measurement in section 8                                                                                                       |
+| Area                  | Tests | What is covered                                                                                                                                                                                                                          |
+| --------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Math engine           | 89    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws                                                                |
+| Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                                                                                         |
+| Layout                | 64    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence, telling a turned line from a climbing one and turning it level                                                                            |
+| Ink                   | 38    | Undo/redo stack behaviour, gesture folding, both erasers                                                                                                                                                                                 |
+| Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                                                                                 |
+| Model integration     | 53    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads, lines turned and climbing at up to 30°                                    |
+| Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                                                                                          |
+| Geometry fusion       | 21    | Stroke arrangements, fusion weights, the decimal point                                                                                                                                                                                   |
+| Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                                                                                      |
+| Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                                                                                           |
+| Answer overlay        | 30    | What is written after the "=" or under a rule and how dark, the dotted line under a doubted symbol, the note for a line that makes no sense, that no question mark is ever drawn, and that the answer follows a line written at an angle |
+| Tool sizes            | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                                                                                         |
+| Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                                                                         |
+| Evaluation data       | 8     | Reading pen trajectory files for the real-handwriting measurement in section 8                                                                                                                                                           |
 
 Two choices are worth noting. Layout and recognition are tested with **synthetic handwriting**: a
 fixture that turns a string such as `7.5÷2-60=` into stroke paths with controllable size, spacing
@@ -807,6 +848,9 @@ recognition would fail the build.
 - **Symbols must not overlap horizontally.** Segmentation is by horizontal overlap, so digits
   written touching or on top of each other are read as one symbol. Cursive-style joined digits
   are not supported.
+- **Lines steeper than about 35° are not read**, and a steep line that breaks in two can give an
+  answer for the part that ends in `=`. Lines sloping less are read whether they climb or are
+  turned (section 3). A column sum must be upright.
 - **Two layouts only: a line ending in `=`, or a column over a rule.** Fractions, exponents,
   long division and expressions that wrap are out of scope. In a column, carries or working
   written among the rows would be read as part of them.

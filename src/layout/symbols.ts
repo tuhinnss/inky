@@ -1,5 +1,6 @@
 import { unionBounds, type Bounds, type Stroke } from '../ink';
 import { isFlat, lineHeight, measure, type StrokeMetrics } from './metrics';
+import type { Tilt } from './tilt';
 
 /** One handwritten symbol: the strokes that make it up, and where it is. */
 export interface SymbolGroup {
@@ -31,6 +32,12 @@ export interface Line {
    * with a rule drawn underneath. Each row is a line in its own right.
    */
   column?: Column;
+  /**
+   * Set when the line was written at an angle and has been turned level to be read.
+   * Everything else here, the bounds and the strokes of every symbol, is then in the
+   * line's own level frame; this says how that frame sits on the page.
+   */
+  tilt?: Tilt;
 }
 
 export interface Column {

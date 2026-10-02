@@ -2,6 +2,7 @@ import { unionBounds, type Bounds, type Stroke } from '../ink';
 import { groupIntoLines } from './lines';
 import { isFlat, lineHeight, measure, median, type StrokeMetrics } from './metrics';
 import { segmentLine, type Line, type SymbolGroup } from './symbols';
+import { estimateTilt, levelStroke } from './tilt';
 
 /** A rule is at least this wide, measured in digit heights of the rows above it. */
 const MIN_RULE_WIDTH = 0.8;
@@ -203,6 +204,21 @@ const strokesIn = (lines: readonly Line[]): Stroke[] =>
   lines.flatMap((line) => line.symbols.flatMap((symbol) => symbol.strokes));
 
 /**
+ * One line of writing as symbols. A line written at an angle is turned level first, so
+ * that everything after this sees it as if it had been written straight (see tilt.ts).
+ */
+function toLine(strokes: readonly Stroke[]): Line {
+  const tilt = estimateTilt(strokes);
+  if (!tilt) return segmentLine(strokes);
+
+  const line = segmentLine(strokes.map((stroke) => levelStroke(stroke, tilt)));
+  // The same ink turned by a different amount is a different picture to the model, so
+  // it must not share a cached reading with it.
+  for (const symbol of line.symbols) symbol.key += `@${tilt.degrees}`;
+  return { ...line, tilt };
+}
+
+/**
  * Everything on the page as lines of symbols, top to bottom, with sums written as a
  * column recognised as such.
  *
@@ -226,7 +242,7 @@ export function layoutPage(strokes: readonly Stroke[]): Line[] {
   let rules = joinPieces(metrics.filter((m) => isFlat(m) && !isFlanked(m, metrics)));
 
   for (;;) {
-    if (rules.length === 0) return groupIntoLines(strokes).map(segmentLine);
+    if (rules.length === 0) return groupIntoLines(strokes).map(toLine);
 
     const inRule = new Set(rules.flatMap((rule) => rule.pieces));
     const free = metrics.filter((m) => !inRule.has(m));
@@ -246,7 +262,7 @@ export function layoutPage(strokes: readonly Stroke[]): Line[] {
 
     const rest = free.filter((m) => !claimed.has(m.stroke)).map((m) => m.stroke);
     return [
-      ...groupIntoLines(rest).map(segmentLine),
+      ...groupIntoLines(rest).map(toLine),
       ...columns.map(({ rule, rows }) => toColumnLine(rule, rows)),
     ].sort((a, b) => a.bounds.minY - b.bounds.minY || a.bounds.minX - b.bounds.minX);
   }

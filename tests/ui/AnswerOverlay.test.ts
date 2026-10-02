@@ -9,7 +9,7 @@ import {
   answerText,
   LOW_CONFIDENCE,
 } from '../../src/ui/AnswerOverlay';
-import { ink, inkColumn, strokesOf } from '../fixtures/ink';
+import { ink, inkColumn, strokesOf, turned } from '../fixtures/ink';
 
 /** An equation as the pipeline would hand it over, read with the given confidence. */
 function equation(text: string, confidence = 1, x = 40): Equation {
@@ -71,6 +71,8 @@ const widthOf = (text: string, font: string): number =>
 function fakeLayer(width: number) {
   const texts: Text[] = [];
   const dotted: Dotted[] = [];
+  /** Every turn of the canvas, in radians, in the order made. */
+  const turns: number[] = [];
   const clips: Array<Text['clip']> = [undefined];
   let pending: Text['clip'];
   let dash: number[] = [];
@@ -104,6 +106,8 @@ function fakeLayer(width: number) {
       }
     },
     setLineDash: (segments: number[]) => (dash = segments),
+    translate: () => undefined,
+    rotate: (angle: number) => turns.push(angle),
     measureText: (text: string) => ({ width: widthOf(text, ctx.font) }),
     fillText: (text: string, x: number, y: number) => {
       const w = widthOf(text, ctx.font);
@@ -116,16 +120,37 @@ function fakeLayer(width: number) {
   const clear = (): void => {
     texts.length = 0;
     dotted.length = 0;
+    turns.length = 0;
   };
-  return { layer: { ctx, width, height: 600, clear } as unknown as CanvasLayer, texts, dotted };
+  const layer = { ctx, width, height: 600, clear } as unknown as CanvasLayer;
+  return { layer, texts, dotted, turns };
 }
 
-function show(equations: Equation[], pageWidth = 1200): { texts: Text[]; dotted: Dotted[] } {
-  const { layer, texts, dotted } = fakeLayer(pageWidth);
+function show(
+  equations: Equation[],
+  pageWidth = 1200,
+): { texts: Text[]; dotted: Dotted[]; turns: number[] } {
+  const { layer, texts, dotted, turns } = fakeLayer(pageWidth);
   const overlay = new AnswerOverlay(layer);
   overlay.setEquations(equations);
   overlay.redraw();
-  return { texts: [...texts], dotted: [...dotted] };
+  return { texts: [...texts], dotted: [...dotted], turns: [...turns] };
+}
+
+/** A line written at an angle, read as if every symbol had been recognised. */
+function askew(text: string, degrees: number): Equation {
+  const written = ink(text, { size: 80, x: 100, y: 400 });
+  const [line] = layoutPage(turned(written, degrees));
+  const cache = new Map<string, Float32Array>();
+  line.symbols.forEach((symbol, i) => {
+    if (symbol.kind !== 'shape') return;
+    const char = written[i].char as ModelSymbol;
+    cache.set(
+      symbol.key,
+      Float32Array.from(MODEL_SYMBOLS, (s) => (s === char ? 1 : 0)),
+    );
+  });
+  return readEquation({ id: 1, version: 1, line }, cache);
 }
 
 /** Makes the symbol at `index` the one the notebook was unsure of. */
@@ -325,5 +350,36 @@ describe('drawing the answer of a column sum', () => {
     expect(texts).toHaveLength(1);
     expect(texts[0].text).toContain('needs a number');
     expect(texts[0].y).toBeGreaterThan(sum.line.bounds.maxY);
+  });
+});
+
+describe('a line written at an angle', () => {
+  it('has its answer written along the line, by turning the canvas the way the line runs', () => {
+    const sum = askew('18+4×3=', 25);
+    const { texts, turns } = show([sum]);
+
+    expect(sum.line.tilt).toBeDefined();
+    expect(texts.map((t) => t.text)).toEqual(['30']);
+    expect(turns).toEqual([sum.line.tilt!.angle]);
+  });
+
+  it('has the answer after the "=", measured along the line', () => {
+    const sum = askew('18+4×3=', -25);
+    const [answer] = show([sum]).texts;
+    const equals = sum.line.symbols[sum.line.symbols.length - 1].bounds;
+    // Both are in the line's own level frame, which is the frame the canvas was turned to.
+    expect(answer.left).toBeGreaterThan(equals.maxX);
+    expect(answer.y).toBeGreaterThan(equals.minY - 10);
+    expect(answer.y).toBeLessThan(equals.maxY + 10);
+  });
+
+  it('does not turn the canvas for a level line', () => {
+    expect(show([equation('18+4×3=')]).turns).toEqual([]);
+  });
+
+  it('turns it for the askew line only, when both are on the page', () => {
+    const level = { ...equation('96-27='), id: 1 };
+    const sloped = { ...askew('18+4×3=', 25), id: 2 };
+    expect(show([level, sloped]).turns).toHaveLength(1);
   });
 });
