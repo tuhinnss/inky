@@ -25,6 +25,7 @@ export class App {
   private readonly pipeline: RecognitionPipeline;
   private readonly overlay: AnswerOverlay;
   private readonly cleanup: Array<() => void> = [];
+  private noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
   private tool: Tool = 'pen';
   private penWidth: number = PEN_WIDTHS[1];
@@ -103,6 +104,7 @@ export class App {
   destroy(): void {
     for (const dispose of this.cleanup) dispose();
     this.cleanup.length = 0;
+    clearTimeout(this.noticeTimer);
     this.pipeline.dispose();
     this.recognition.dispose();
     this.overlay.destroy();
@@ -111,9 +113,17 @@ export class App {
     this.notebook.remove();
   }
 
-  private showNotice(message: string): void {
+  /**
+   * Pencils a line at the foot of the page.
+   * @param forMs if given, the note is rubbed out again after this long.
+   */
+  showNotice(message: string, forMs?: number): void {
+    clearTimeout(this.noticeTimer);
     this.notice.textContent = message;
     this.notice.hidden = false;
+    if (forMs !== undefined) {
+      this.noticeTimer = setTimeout(() => (this.notice.hidden = true), forMs);
+    }
   }
 
   private setTool(tool: Tool): void {
