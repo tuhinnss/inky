@@ -12,6 +12,7 @@ import {
 } from '../ink';
 import { CanvasLayer } from './CanvasLayer';
 import { clientToPage, sanitizeDpr, type Position, type Size } from './coords';
+import { isPalm, type PenState } from './palm';
 import { livePath, strokePath } from './strokePath';
 
 export type Tool = 'pen' | 'stroke-eraser' | 'pixel-eraser';
@@ -26,6 +27,8 @@ export interface InkCanvasOptions {
 /** What the pointer that is currently down is doing. */
 interface Gesture {
   pointerId: number;
+  /** `mouse`, `touch` or `pen`, as the browser reported it. */
+  pointerType: string;
   tool: Tool;
   /** Pen: the samples so far. */
   points: Point[];
@@ -37,8 +40,6 @@ interface Gesture {
 
 /** Samples closer together than this add nothing but work. */
 const MIN_SAMPLE_DISTANCE = 0.3;
-/** After a pen lifts, touches are ignored for this long: it is nearly always a palm. */
-const PALM_REJECTION_MS = 400;
 
 /**
  * The drawing surface: three stacked canvases and the pointer handling that feeds them.
@@ -64,7 +65,8 @@ export class InkCanvas {
   private gesture: Gesture | null = null;
   private hover: Position | null = null;
   private origin = { left: 0, top: 0 };
-  private lastPenTime = -Infinity;
+  /** When the stylus was last seen, for telling a resting hand from a finger. */
+  private readonly pen: PenState = { seen: false, lastActivity: -Infinity };
 
   private frame = 0;
   private inkDirty = false;
@@ -182,14 +184,25 @@ export class InkCanvas {
   // ---------------------------------------------------------------- pointer input
 
   private readonly onPointerDown = (event: PointerEvent): void => {
+    if (event.pointerType === 'pen') {
+      this.notePen(event);
+      // The hand usually lands before the pen tip. If a touch has already started a
+      // stroke when the pen arrives, that touch was the hand: drop its stroke and let
+      // the pen write.
+      if (this.gesture?.pointerType === 'touch') this.finishGesture(false);
+    }
     if (this.gesture) return; // one pointer at a time; a second finger is ignored
     if (event.pointerType === 'mouse' && event.button !== 0) return;
-    if (event.pointerType === 'touch' && event.timeStamp - this.lastPenTime < PALM_REJECTION_MS) {
-      return;
-    }
+    if (event.pointerType === 'touch' && isPalm(event, this.pen)) return;
 
     // Keep receiving this pointer's events even if it leaves the canvas mid-stroke.
-    this.host.setPointerCapture(event.pointerId);
+    // Capture can be refused, for a pointer that has already lifted; the stroke then
+    // simply ends at the edge of the canvas, which is not worth failing over.
+    try {
+      this.host.setPointerCapture(event.pointerId);
+    } catch {
+      // Nothing to do: see above.
+    }
     this.measureOrigin();
 
     const position = this.toPage(event);
@@ -200,6 +213,7 @@ export class InkCanvas {
 
     this.gesture = {
       pointerId: event.pointerId,
+      pointerType: event.pointerType,
       tool,
       points: [],
       simulatePressure: event.pointerType !== 'pen',
@@ -216,6 +230,10 @@ export class InkCanvas {
   };
 
   private readonly onPointerMove = (event: PointerEvent): void => {
+    // A stylus reports while it hovers above the glass. That is how the page knows the
+    // pen is near before it touches, and that a touch arriving now is the writing hand.
+    if (event.pointerType === 'pen') this.notePen(event);
+
     const gesture = this.gesture;
     if (!gesture) {
       // Nothing is down: just track the pointer so the eraser tip can follow the mouse.
@@ -242,12 +260,14 @@ export class InkCanvas {
   };
 
   private readonly onPointerUp = (event: PointerEvent): void => {
-    if (event.pointerId === this.gesture?.pointerId) this.finishGesture(event, true);
+    if (event.pointerType === 'pen') this.notePen(event);
+    if (event.pointerId === this.gesture?.pointerId) this.finishGesture(true);
   };
 
   /** The system took the pointer away (palm detected, app switch): keep nothing. */
   private readonly onPointerCancel = (event: PointerEvent): void => {
-    if (event.pointerId === this.gesture?.pointerId) this.finishGesture(event, false);
+    if (event.pointerType === 'pen') this.notePen(event);
+    if (event.pointerId === this.gesture?.pointerId) this.finishGesture(false);
   };
 
   private readonly onPointerLeave = (): void => {
@@ -256,12 +276,20 @@ export class InkCanvas {
     this.requestFrame('live');
   };
 
-  private finishGesture(event: PointerEvent, commit: boolean): void {
+  private notePen(event: PointerEvent): void {
+    this.pen.seen = true;
+    this.pen.lastActivity = event.timeStamp;
+  }
+
+  /**
+   * Ends the gesture in progress.
+   * @param commit false throws away what it drew or erased, as if it had not happened.
+   */
+  private finishGesture(commit: boolean): void {
     const gesture = this.gesture;
     if (!gesture) return;
     this.gesture = null;
-    if (event.pointerType === 'pen') this.lastPenTime = event.timeStamp;
-    if (event.pointerType === 'touch') this.hover = null;
+    if (gesture.pointerType === 'touch') this.hover = null;
 
     if (gesture.tool === 'pen') {
       if (commit && gesture.points.length > 0) {

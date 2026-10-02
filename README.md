@@ -63,7 +63,8 @@ is marked and a note says why.
 
 The size button shows the size of whichever tool is in hand. Press it for a slider with a
 true-size preview: pen width from 1.5 to 12 px, eraser tip from 8 to 80 px. The eraser end of a
-stylus erases without changing tool.
+stylus erases without changing tool, and a hand resting on the screen while you write with a
+stylus is ignored.
 
 ## How it works
 
@@ -119,7 +120,7 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 | `npm run dev`         | Start the dev server                                                                    |
 | `npm run build`       | Type-check, then build to `dist/`                                                       |
 | `npm run preview`     | Serve the production build locally                                                      |
-| `npm test`            | Run the 514 unit and integration tests once                                             |
+| `npm test`            | Run the 522 unit and integration tests once                                             |
 | `npm run typecheck`   | Type-check without building                                                             |
 | `npm run lint`        | Lint the source. Fails on `eval` or `new Function`                                      |
 | `npm run format`      | Format the source with Prettier                                                         |

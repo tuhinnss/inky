@@ -517,8 +517,20 @@ Pointer Events give one code path for mouse, touch and stylus.
   batches the extra samples into one event; `getCoalescedEvents()` recovers them, for a smoother
   curve.
 - **Pointer capture** keeps a stroke going if the pointer leaves the canvas.
-- **Palm rejection.** Touches are ignored for 400 ms after a pen lifts, and only one pointer draws
-  at a time.
+- **Palm rejection.** Someone writing with a stylus rests their hand on the glass, usually a moment
+  before the pen tip arrives, and the screen reports that hand as a touch. Only one pointer draws
+  at a time, and on top of that ([`palm.ts`](../src/canvas/palm.ts)):
+  - _The pen outranks a touch._ If a touch has already begun a stroke when the pen comes down, the
+    touch was the hand: its stroke is discarded, leaving nothing in the undo history, and the pen
+    writes.
+  - _A touch near the pen in time is the hand._ A stylus reports while it hovers. A touch within
+    400 ms of the pen last being seen, touching or hovering, is ignored.
+  - _A touch too large for a fingertip is the hand._ A contact patch over 48 px across is ignored.
+
+  None of this applies until a stylus has been used. On a device without one, every touch is a
+  finger that means to write, however broad. And a fingertip can still write on a stylus device
+  once the pen has been away for a moment.
+
 - The eraser end of a stylus erases without changing tool.
 - The canvases use ordinary contexts. An earlier version asked for a `desynchronized` (low-latency)
   context for the layer under the pen. On an Android tablet that layer came out as an opaque black
@@ -751,24 +763,24 @@ What makes that hold:
 
 ## 9. Tests
 
-514 tests in 22 files, run with Vitest in Node. `npm test` takes about two seconds.
+522 tests in 23 files, run with Vitest in Node. `npm test` takes about two seconds.
 
-| Area              | Tests | What is covered                                                                                                                                                           |
-| ----------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Math engine       | 89    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws |
-| Coordinates       | 50    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion                                                                                |
-| Layout            | 36    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence                                                                             |
-| Ink               | 38    | Undo/redo stack behaviour, gesture folding, both erasers                                                                                                                  |
-| Rasteriser        | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                  |
-| Model integration | 44    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads             |
-| Digit helpers     | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                           |
-| Geometry fusion   | 21    | Stroke arrangements, fusion weights, the decimal point                                                                                                                    |
-| Pipeline          | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                       |
-| Column sums       | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                            |
-| Answer overlay    | 18    | What is written after the "=" or under a rule, how dark, and that the doubt mark fits inside the write-on reveal and on the page                                          |
-| Tool sizes        | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                          |
-| Page snapshots    | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                          |
-| Evaluation data   | 8     | Reading pen trajectory files for the real-handwriting measurement in section 8                                                                                            |
+| Area                  | Tests | What is covered                                                                                                                                                           |
+| --------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Math engine           | 89    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws |
+| Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                          |
+| Layout                | 36    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence                                                                             |
+| Ink                   | 38    | Undo/redo stack behaviour, gesture folding, both erasers                                                                                                                  |
+| Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                  |
+| Model integration     | 44    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads             |
+| Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                           |
+| Geometry fusion       | 21    | Stroke arrangements, fusion weights, the decimal point                                                                                                                    |
+| Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                       |
+| Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                            |
+| Answer overlay        | 18    | What is written after the "=" or under a rule, how dark, and that the doubt mark fits inside the write-on reveal and on the page                                          |
+| Tool sizes            | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                          |
+| Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                          |
+| Evaluation data       | 8     | Reading pen trajectory files for the real-handwriting measurement in section 8                                                                                            |
 
 Two choices are worth noting. Layout and recognition are tested with **synthetic handwriting**: a
 fixture that turns a string such as `7.5÷2-60=` into stroke paths with controllable size, spacing
