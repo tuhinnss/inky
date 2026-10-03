@@ -232,13 +232,16 @@ export class Toolbar {
     menu.sizeValue.textContent = label;
   }
 
-  /** The eraser button wears the icon of the eraser it picks up. */
+  /**
+   * The eraser button always shows an eraser, whichever kind it picks up: the two kinds
+   * are told apart in its menu. Its label names the kind.
+   */
   private showEraser(eraser: Eraser): void {
     const button = this.menus.eraser.button;
     if (button.dataset.eraser === eraser) return;
-    const { label, icon } = ERASERS.find((e) => e.tool === eraser)!;
+    const { label } = ERASERS.find((e) => e.tool === eraser)!;
     button.dataset.eraser = eraser;
-    button.innerHTML = icon;
+    button.innerHTML = icons.eraser;
     button.setAttribute('aria-label', `Eraser: ${label.toLowerCase()}`);
   }
 

@@ -10,6 +10,10 @@ export const icons = {
   pen: svg(
     '<path d="M4 20l1.2-4.6L16.4 4.2a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8L8.6 18.8 4 20z"/><path d="M14.5 6.1l3.4 3.4"/>',
   ),
+  /** A block eraser, tilted as if in use, rubbing along a line. On the eraser button. */
+  eraser: svg(
+    '<path d="M9 20.5h11"/><path d="M4.9 14.8l8.6-8.6a2 2 0 0 1 2.8 0l2.5 2.5a2 2 0 0 1 0 2.8l-7.4 7.4a2 2 0 0 1-1.4.6H8.3a2 2 0 0 1-1.4-.6l-2-2a1.5 1.5 0 0 1 0-2.1z"/><path d="M9.6 10.1l5.3 5.3"/><path d="M5.6 15.5l3.4 3.4" stroke-width="3" opacity="0.35"/>',
+  ),
   /** Removes a whole stroke at once: a pen stroke, struck through. */
   strokeEraser: svg('<path d="M3 14.5c3-7 6-7 9 0s6 7 9 0"/><path d="M5.5 4.5l13 15"/>'),
   /** Eraser rubbing out part of a line: the line has a gap. */
