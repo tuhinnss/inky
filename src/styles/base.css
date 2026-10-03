@@ -1,6 +1,8 @@
 :root {
   /* A maths notebook page: cool white paper, pale blue squares, a pink margin rule. */
   --paper: #fafbf7;
+  /* What shows between two pages. */
+  --desk: #e8eae3;
   --rule: #cfe0ea;
   --margin-rule: #e8798c;
 

@@ -1,23 +1,28 @@
 /* ------------------------------------------------------------------ the sheet */
 
 .notebook {
+  /* The ruling is a CSS background, not canvas drawing: it costs nothing per frame and
+     stays sharp at every device pixel ratio. The margin and every page are ruled alike. */
+  --ruling:
+    linear-gradient(to right, var(--rule) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--rule) 1px, transparent 1px);
+
   display: grid;
   grid-template-columns: var(--margin-width) minmax(0, 1fr);
   height: 100%;
   padding-left: env(safe-area-inset-left);
-
-  /* The ruling is a CSS background, not canvas drawing: it costs nothing per frame and
-     stays sharp at every device pixel ratio. */
   background-color: var(--paper);
-  background-image:
-    linear-gradient(to right, var(--rule) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--rule) 1px, transparent 1px);
+  background-image: var(--ruling);
   background-size: var(--grid) var(--grid);
 }
 
 /* ----------------------------------------------------------------- the margin */
 
 .toolbar {
+  /* Its own ruling, which App.ts moves with the pages as they scroll. */
+  background-color: var(--paper);
+  background-image: var(--ruling);
+  background-size: var(--grid) var(--grid);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -304,6 +309,109 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ the pages */
+
+/* Sheets of paper down a desk. Only the paper scrolls; the canvases above it stay put and
+   redraw for each scroll position. Touch does not scroll it natively: one finger writes,
+   and InkCanvas.ts scrolls it for a drag with two. */
+.pages {
+  position: absolute;
+  inset: 0;
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  background: var(--desk);
+}
+
+.pages,
+.pages * {
+  touch-action: none;
+}
+
+.page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--page-gap);
+}
+
+.sheet {
+  position: relative;
+  flex: none;
+  height: var(--page-height, 100%);
+  background-color: var(--paper);
+  background-image: var(--ruling);
+  background-size: var(--grid) var(--grid);
+  box-shadow: 0 1px 3px rgb(28 43 110 / 12%);
+}
+
+.page-number {
+  position: absolute;
+  right: calc(var(--grid) / 2);
+  bottom: 6px;
+  font-family: var(--hand);
+  font-weight: 300;
+  font-size: 16px;
+  color: color-mix(in srgb, var(--graphite) 55%, transparent);
+  pointer-events: none;
+}
+
+/* Below the last page: a "+", and around it a ring that fills as you pull past the end. */
+.page-end {
+  display: grid;
+  flex: none;
+  place-content: center;
+  justify-items: center;
+  gap: 2px;
+  height: 168px;
+  font-family: var(--hand);
+  font-weight: 300;
+  font-size: 17px;
+  color: var(--graphite);
+}
+
+.add-page {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.add-page:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.add-ring {
+  stroke: color-mix(in srgb, var(--graphite) 40%, transparent);
+  stroke-width: 1.5;
+}
+
+.add-ring-fill {
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-dashoffset: calc(157.08px * (1 - var(--pull, 0)));
+  transition: stroke-dashoffset 120ms ease-out;
+}
+
+.add-plus {
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.page-end[data-blank='true'] {
+  color: color-mix(in srgb, var(--graphite) 55%, transparent);
+}
+
+.page-end[data-blank='true'] .add-page {
+  cursor: default;
 }
 
 .hint {

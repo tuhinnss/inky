@@ -544,6 +544,42 @@ The paper grid is a CSS background, not canvas drawing. It costs nothing per fra
 There is no standing render loop. A frame is requested only when something changed, and at most
 once per display refresh however many pointer events arrive.
 
+### Pages
+
+The notebook is a stack of pages down a scrolling desk
+([`PageStack.ts`](../src/canvas/PageStack.ts), [`pageGeometry.ts`](../src/canvas/pageGeometry.ts)).
+Every page is the same height, with a gap of one grid square between two, and strokes are stored
+in the coordinates of the whole stack: a stroke on page three simply has a larger `y`. Layout and
+recognition need no change for that. Two sums on different pages are far apart, so they are two
+lines like any others.
+
+- **Only the paper scrolls.** The sheets are HTML elements with the ruling as their background.
+  The three canvases stay the size of the window, laid over them, and show whatever part is in
+  view. Canvases as tall as all the pages would cost about 20 MB each per page at a tablet's pixel
+  ratio. The scroll position is part of each canvas's transform, so the code that draws strokes
+  and answers still works in page coordinates. On each scroll event the ink and the answers are
+  redrawn at once, in the same frame as the paper moves, and strokes out of view are skipped. With
+  three pages holding 423 strokes and 42 answers, at a pixel ratio of 2, a scroll frame cost
+  0.2 ms at the median and 0.9 ms at worst.
+- **Scrolling.** The wheel and the scrollbar scroll as usual. On a touchscreen one finger writes,
+  so two fingers scroll. When a second finger lands while the first is writing, that stroke is
+  dropped, as if never drawn, and both fingers scroll from then on. A touch taken for a resting
+  hand never scrolls (palm rejection, below).
+- **A new page.** Below the last page is a "+". Press it, or carry on scrolling past it: at the
+  end there is nothing left to scroll, so the wheel or the fingers pull on it instead. A ring
+  around the "+" fills as you pull, and empties again if you stop. When it is full, a page is
+  added and the view glides to its top. A page is added only after one with writing on it, so a
+  fast spin of the wheel cannot stack up blank pages; under a blank page the "+" is faint and
+  says to write on it first.
+- **How tall.** A page starts as tall as the window, rounded up to whole squares so that every
+  page starts on a ruling line. While there is one page it follows the window. Once there is a
+  second it keeps its height, since changing it would move the break between the two under the
+  ink.
+- **Clearing** removes the pages along with the writing. Undoing it brings back as many pages as
+  the writing needs: the page count always covers the lowest stroke.
+- A stroke cannot begin in a gap between two pages or below the last one. It can stray into a
+  gap once begun, and an eraser can start anywhere.
+
 ### High-DPI displays
 
 Strokes are stored in CSS pixels. The canvas backing store is `CSS size × devicePixelRatio`, and
@@ -836,7 +872,7 @@ What makes that hold:
 
 ## 9. Tests
 
-587 tests in 25 files, run with Vitest in Node. `npm test` takes about two seconds.
+602 tests in 26 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area                  | Tests | What is covered                                                                                                                                                                                                                          |
 | --------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -853,6 +889,7 @@ What makes that hold:
 | Answer overlay        | 30    | What is written after the "=" or under a rule and how dark, the dotted line under a doubted symbol, the note for a line that makes no sense, that no question mark is ever drawn, and that the answer follows a line written at an angle |
 | Tool sizes            | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                                                                                         |
 | Tool menus            | 16    | Which press picks a tool up and which opens or closes its menu, the eraser button picking up the eraser used last, and the inks: all different, readable on the paper, never the grey of the answers                                     |
+| Pages                 | 15    | Where each page is, the page under a point and none in a gap, how many pages the writing needs, page heights on whole grid squares, and how far the ring around the "+" fills as you pull                                                |
 | Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                                                                         |
 | Evaluation data       | 8     | Reading pen trajectory files for the real-handwriting measurement in section 8                                                                                                                                                           |
 
@@ -882,7 +919,8 @@ recognition would fail the build.
 - **A dot is only ever a decimal point.** A stray speck low on the line will be read as one.
 - **The answer does not avoid ink.** It is drawn to the right of the `=`, or below the line when
   it would run off the page; it does not check for other writing there.
-- **The page does not scroll.** It is one screen of paper.
+- **Nothing is saved.** Reloading the app starts a fresh notebook.
+- **Touch scrolling has no momentum.** Two fingers move the pages exactly as far as they move.
 - **WASM runtime size.** The 14 MB runtime is far larger than the 1.6 MB model it runs. A
   hand-written forward pass for this four-layer network would be a few kilobytes; we judged a
   maintained runtime the better engineering trade.

@@ -1,4 +1,5 @@
 import { InkCanvas, type Tool } from '../canvas/InkCanvas';
+import { PageStack } from '../canvas/PageStack';
 import { History, StrokeEdit, StrokeStore } from '../ink';
 import { RecognitionClient } from '../recognition/RecognitionClient';
 import { AnswerOverlay } from '../ui/AnswerOverlay';
@@ -17,6 +18,8 @@ export class App {
   /** What the notebook currently reads on the page. Exposed for tests and debugging. */
   equations: readonly Equation[] = [];
   stats: PipelineStats | undefined;
+
+  readonly pages: PageStack;
 
   private readonly notebook: HTMLElement;
   private readonly toolbar: Toolbar;
@@ -57,14 +60,19 @@ export class App {
     const page = document.createElement('main');
     page.className = 'page';
 
+    // Pages are whole squares of the grid the paper is ruled with.
+    const grid = parseFloat(getComputedStyle(root).getPropertyValue('--grid')) || 28;
+    this.pages = new PageStack(grid);
+
     const hint = document.createElement('p');
     hint.className = 'hint';
     hint.innerHTML = 'Write a sum, then finish it with =<small>18 + 4 × 3 =</small>';
+    this.pages.sheet(0).append(hint);
     this.notice = document.createElement('p');
     this.notice.className = 'notice';
     this.notice.setAttribute('role', 'status');
     this.notice.hidden = true;
-    page.append(hint, this.notice);
+    page.append(this.pages.element, this.notice);
 
     this.notebook.append(this.toolbar.element, page);
     root.append(this.notebook);
@@ -73,6 +81,8 @@ export class App {
       inkColor: this.penColor,
       penWidth: this.penWidth,
       eraserRadius: this.eraserSize / 2,
+      isWritable: (at) => this.pages.isWritable(at),
+      scrollBy: (dy) => this.pages.scrollBy(dy),
     });
     this.canvas.setTool(this.tool);
 
@@ -94,7 +104,13 @@ export class App {
       this.store.subscribe(() => this.refresh()),
       this.history.subscribe(() => this.refresh()),
       this.canvas.onActivity((active) => this.pipeline.setPenDown(active)),
-      this.canvas.onResized(() => this.overlay.redraw()),
+      this.canvas.onViewChanged(() => this.overlay.redraw()),
+      this.pages.onScroll((top) => {
+        this.canvas.setScroll(top);
+        // The margin is ruled too. Moving its ruling with the pages keeps the lines
+        // running on across the margin rule.
+        this.toolbar.element.style.backgroundPositionY = `${-top}px`;
+      }),
     );
 
     // Canvas text does not wait for web fonts. Answers drawn before Kalam has loaded
@@ -116,6 +132,7 @@ export class App {
     this.recognition.dispose();
     this.overlay.destroy();
     this.canvas.destroy();
+    this.pages.destroy();
     this.toolbar.destroy();
     this.notebook.remove();
   }
@@ -165,13 +182,18 @@ export class App {
     else this.setEraserSize(stepSize(ERASER_SIZE, this.eraserSize, steps));
   }
 
-  /** Clearing is an ordinary undoable edit, so it needs no "are you sure?" dialog. */
+  /**
+   * Clearing is an ordinary undoable edit, so it needs no "are you sure?" dialog. The
+   * pages go with the writing; undoing brings back as many as the writing needs.
+   */
   private clear(): void {
     if (this.store.size > 0) this.history.execute(new StrokeEdit([...this.store.all()], []));
+    this.pages.trim();
   }
 
   private refresh(): void {
     this.notebook.dataset.empty = String(this.store.size === 0);
+    this.pages.setInk(this.store.all());
     this.toolbar.update({
       tool: this.tool,
       eraser: this.eraser,

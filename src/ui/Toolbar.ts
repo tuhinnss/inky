@@ -85,7 +85,7 @@ export class Toolbar {
     const edits = this.group('History');
     this.undoButton = this.button(icons.undo, 'Undo', 'Ctrl+Z', () => actions.undo());
     this.redoButton = this.button(icons.redo, 'Redo', 'Ctrl+Y', () => actions.redo());
-    this.clearButton = this.button(icons.clear, 'Clear the page', '', () => actions.clear());
+    this.clearButton = this.button(icons.clear, 'Clear all pages', '', () => actions.clear());
     edits.append(this.undoButton, this.redoButton, this.clearButton);
 
     this.element.append(tools, edits);

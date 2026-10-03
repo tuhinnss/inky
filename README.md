@@ -46,6 +46,8 @@ appears about a third of a second after you stop writing.
 - A line does not have to be level. Writing that climbs, or is turned as a whole, is read up to
   about 30° either way, and the answer is written along the line.
 - Write as many equations on the page as you like. Each is worked out separately.
+- Need more room? Scroll to the end, past the last page, and a + appears. Keep scrolling, or press
+  it, and a new page is added. On a touchscreen, scroll with two fingers; one finger writes.
 - Erase a number and write another in its place, and the answer updates.
 
 Your writing is ink. Everything the notebook works out is drawn in pencil. When it is unsure of a
@@ -61,7 +63,7 @@ why; nothing is written where the answer would go.
 | Make the pen or the eraser thicker or thinner    | `[` `]`  |
 | Undo                                             | `Ctrl+Z` |
 | Redo                                             | `Ctrl+Y` |
-| Clear the page (can be undone)                   |          |
+| Clear all pages (can be undone)                  |          |
 
 Press a tool once to pick it up, and press it again for its menu. The pen's menu sets its width,
 from 1.5 to 12 px, and its colour, from six inks. The eraser's menu sets the size of its tip, from
@@ -123,7 +125,7 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 | `npm run dev`         | Start the dev server                                                                    |
 | `npm run build`       | Type-check, then build to `dist/`                                                       |
 | `npm run preview`     | Serve the production build locally                                                      |
-| `npm test`            | Run the 587 unit and integration tests once                                             |
+| `npm test`            | Run the 602 unit and integration tests once                                             |
 | `npm run typecheck`   | Type-check without building                                                             |
 | `npm run lint`        | Lint the source. Fails on `eval` or `new Function`                                      |
 | `npm run format`      | Format the source with Prettier                                                         |
