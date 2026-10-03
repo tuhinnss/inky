@@ -7,6 +7,7 @@ import {
   AnswerOverlay,
   answerOpacity,
   answerText,
+  isDragged,
   LOW_CONFIDENCE,
 } from '../../src/ui/AnswerOverlay';
 import { ink, inkColumn, strokesOf, turned } from '../fixtures/ink';
@@ -73,6 +74,8 @@ function fakeLayer(width: number) {
   const dotted: Dotted[] = [];
   /** Every turn of the canvas, in radians, in the order made. */
   const turns: number[] = [];
+  /** Every shift of the canvas, in the order made. */
+  const shifts: Array<[number, number]> = [];
   const clips: Array<Text['clip']> = [undefined];
   let pending: Text['clip'];
   let dash: number[] = [];
@@ -106,7 +109,7 @@ function fakeLayer(width: number) {
       }
     },
     setLineDash: (segments: number[]) => (dash = segments),
-    translate: () => undefined,
+    translate: (x: number, y: number) => shifts.push([x, y]),
     rotate: (angle: number) => turns.push(angle),
     measureText: (text: string) => ({ width: widthOf(text, ctx.font) }),
     fillText: (text: string, x: number, y: number) => {
@@ -121,9 +124,10 @@ function fakeLayer(width: number) {
     texts.length = 0;
     dotted.length = 0;
     turns.length = 0;
+    shifts.length = 0;
   };
   const layer = { ctx, width, height: 600, clear } as unknown as CanvasLayer;
-  return { layer, texts, dotted, turns };
+  return { layer, texts, dotted, turns, shifts };
 }
 
 function show(
@@ -381,5 +385,58 @@ describe('a line written at an angle', () => {
     const level = { ...equation('96-27='), id: 1 };
     const sloped = { ...askew('18+4×3=', 25), id: 2 };
     expect(show([level, sloped]).turns).toHaveLength(1);
+  });
+});
+
+describe('a sum dragged with the lasso', () => {
+  const idsOf = (sum: Equation): Set<number> =>
+    new Set(sum.line.symbols.flatMap((symbol) => symbol.strokes.map((stroke) => stroke.id)));
+
+  /** The overlay, showing `equations`, and what it drew in its last frame. */
+  function overlayOf(equations: Equation[]) {
+    const fake = fakeLayer(1200);
+    const overlay = new AnswerOverlay(fake.layer);
+    overlay.setEquations(equations);
+    const frame = () => {
+      overlay.redraw();
+      return { texts: [...fake.texts], shifts: [...fake.shifts] };
+    };
+    return { overlay, frame };
+  }
+
+  it('is carried whole only when the lasso holds every one of its strokes', () => {
+    const sum = equation('96-27=');
+    const all = idsOf(sum);
+    expect(isDragged(sum, { ids: all, dx: 0, dy: 0, dropped: false })).toBe(true);
+    const some = new Set([...all].slice(1));
+    expect(isDragged(sum, { ids: some, dx: 0, dy: 0, dropped: false })).toBe(false);
+  });
+
+  it('takes its answer along while it is dragged, and leaves the others', () => {
+    const dragged = { ...equation('96-27='), id: 1 };
+    const still = { ...equation('7+5=', 1, 600), id: 2 };
+    const { overlay, frame } = overlayOf([dragged, still]);
+    overlay.setDrag({ ids: idsOf(dragged), dx: 40, dy: 180, dropped: false });
+    const { texts, shifts } = frame();
+    expect(texts.map((t) => t.text).sort()).toEqual(['12', '69']);
+    expect(shifts).toEqual([[40, 180]]);
+  });
+
+  it('keeps the answer at the drop until the moved sum has been read again', () => {
+    const sum = equation('96-27=');
+    const { overlay, frame } = overlayOf([sum]);
+    overlay.setDrag({ ids: idsOf(sum), dx: 40, dy: 180, dropped: true });
+    expect(frame().shifts).toEqual([[40, 180]]);
+    // The reading of the moved strokes arrives: it is drawn where it is, unshifted.
+    overlay.setEquations([equation('96-27=', 1, 80)]);
+    expect(frame().shifts).toEqual([]);
+  });
+
+  it('puts the answer back when the drag comes to nothing', () => {
+    const sum = equation('96-27=');
+    const { overlay, frame } = overlayOf([sum]);
+    overlay.setDrag({ ids: idsOf(sum), dx: 40, dy: 180, dropped: false });
+    overlay.setDrag(null);
+    expect(frame().shifts).toEqual([]);
   });
 });

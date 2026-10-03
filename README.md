@@ -60,6 +60,7 @@ why; nothing is written where the answer would go.
 | Pen                                              | `P`      |
 | Eraser, rubbing out whole strokes                | `E`      |
 | Eraser, rubbing out only the part it passes over | `R`      |
+| Lasso, to select writing and move or delete it   | `L`      |
 | Make the pen or the eraser thicker or thinner    | `[` `]`  |
 | Undo                                             | `Ctrl+Z` |
 | Redo                                             | `Ctrl+Y` |
@@ -70,6 +71,9 @@ from 1.5 to 12 px, and its colour, from six inks. The eraser's menu sets the siz
 8 to 80 px, and whether it rubs out whole strokes or only the part it passes over. Both show the
 size you are choosing at its true size. The eraser end of a stylus erases without changing tool,
 and a hand resting on the screen while you write with a stylus is ignored.
+
+With the lasso, draw a loop round some writing to select it. Drag the selection to move it, its
+answer with it, or press Delete. Tap elsewhere to let it go.
 
 ## How it works
 
@@ -125,7 +129,7 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 | `npm run dev`         | Start the dev server                                                                    |
 | `npm run build`       | Type-check, then build to `dist/`                                                       |
 | `npm run preview`     | Serve the production build locally                                                      |
-| `npm test`            | Run the 602 unit and integration tests once                                             |
+| `npm test`            | Run the 631 unit and integration tests once                                             |
 | `npm run typecheck`   | Type-check without building                                                             |
 | `npm run lint`        | Lint the source. Fails on `eval` or `new Function`                                      |
 | `npm run format`      | Format the source with Prettier                                                         |

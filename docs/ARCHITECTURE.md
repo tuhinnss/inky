@@ -667,6 +667,29 @@ The choices in a menu are real radio buttons, hidden behind the swatches and lab
 keys and screen readers work with them without extra code. Which press does what is a pure
 function, `press` in [`menus.ts`](../src/ui/menus.ts), tested on its own.
 
+### The lasso
+
+The third tool selects strokes to move or delete ([`selection.ts`](../src/ink/selection.ts)).
+
+- **Selecting.** Draw a loop round what you want. It need not be closed: the loop is taken to run
+  back from its end to its start. A stroke is selected when more than half of it lies inside,
+  tested point by point by casting a ray and counting how many edges of the loop it crosses. So a
+  careless loop still takes a symbol whose tail pokes out, and leaves a neighbour it only clips.
+- **Showing it.** Each selected stroke is gone over with highlighter and a dashed box is drawn
+  round them all, on the live layer. A slip of paper beside the box holds a Delete button; the
+  Delete key does the same.
+- **Moving.** A press inside the box, or just outside it, takes hold of the selection. While it is
+  dragged, its strokes are left out of the ink layer and drawn on the live layer at the new
+  place, so a frame of dragging costs the same as a frame of writing. Answers whose sums are
+  wholly selected move along with them. When the selection is dropped, the strokes leave the page
+  and moved copies arrive, as one undoable edit: the same single command as drawing and erasing
+  (section 4, "Erasing and undo"). The copies are new strokes, so the moved sum is read again,
+  which takes a few milliseconds; its answer stays at the drop until the new reading replaces it.
+- **Letting go.** Tapping elsewhere, pressing Escape or picking up another tool lets go of the
+  selection. An undo that takes away selected strokes takes them out of the selection too.
+
+It works with a finger, a stylus or a mouse, and two fingers still scroll.
+
 ## 5. Keeping the main thread free
 
 The frame budget at 60 FPS is 16.7 ms. Three mechanisms keep recognition out of it.
@@ -872,26 +895,27 @@ What makes that hold:
 
 ## 9. Tests
 
-602 tests in 26 files, run with Vitest in Node. `npm test` takes about two seconds.
+631 tests in 28 files, run with Vitest in Node. `npm test` takes about two seconds.
 
-| Area                  | Tests | What is covered                                                                                                                                                                                                                          |
-| --------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Math engine           | 89    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws                                                                |
-| Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                                                                                         |
-| Layout                | 64    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence, telling a turned line from a climbing one and turning it level                                                                            |
-| Ink                   | 38    | Undo/redo stack behaviour, gesture folding, both erasers                                                                                                                                                                                 |
-| Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                                                                                 |
-| Model integration     | 53    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads, lines turned and climbing at up to 30°                                    |
-| Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                                                                                          |
-| Geometry fusion       | 21    | Stroke arrangements, fusion weights, the decimal point                                                                                                                                                                                   |
-| Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                                                                                      |
-| Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                                                                                           |
-| Answer overlay        | 30    | What is written after the "=" or under a rule and how dark, the dotted line under a doubted symbol, the note for a line that makes no sense, that no question mark is ever drawn, and that the answer follows a line written at an angle |
-| Tool sizes            | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                                                                                         |
-| Tool menus            | 16    | Which press picks a tool up and which opens or closes its menu, the eraser button picking up the eraser used last, and the inks: all different, readable on the paper, never the grey of the answers                                     |
-| Pages                 | 15    | Where each page is, the page under a point and none in a gap, how many pages the writing needs, page heights on whole grid squares, and how far the ring around the "+" fills as you pull                                                |
-| Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                                                                         |
-| Evaluation data       | 8     | Reading pen trajectory files for the real-handwriting measurement in section 8                                                                                                                                                           |
+| Area                  | Tests | What is covered                                                                                                                                                                                                                                                                                                                                           |
+| --------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Math engine           | 89    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws                                                                                                                                                                                 |
+| Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                                                                                                                                                                                                          |
+| Layout                | 64    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence, telling a turned line from a climbing one and turning it level                                                                                                                                                                                             |
+| Ink                   | 38    | Undo/redo stack behaviour, gesture folding, both erasers                                                                                                                                                                                                                                                                                                  |
+| Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                                                                                                                                                                                                  |
+| Model integration     | 53    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads, lines turned and climbing at up to 30°                                                                                                                                                     |
+| Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                                                                                                                                                                                                           |
+| Geometry fusion       | 21    | Stroke arrangements, fusion weights, the decimal point                                                                                                                                                                                                                                                                                                    |
+| Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                                                                                                                                                                                                       |
+| Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                                                                                                                                                                                                            |
+| Answer overlay        | 34    | What is written after the "=" or under a rule and how dark, the dotted line under a doubted symbol, the note for a line that makes no sense, that no question mark is ever drawn, and that the answer follows a line written at an angle, and that an answer goes with its sum while the lasso drags it and stays at the drop until the sum is read again |
+| Tool sizes            | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                                                                                                                                                                                                          |
+| Tool menus            | 20    | Which press picks a tool up and which opens or closes its menu, the eraser button picking up the eraser used last, the lasso having no menu, and the inks: all different, readable on the paper, never the grey of the answers                                                                                                                            |
+| Pages                 | 15    | Where each page is, the page under a point and none in a gap, how many pages the writing needs, page heights on whole grid squares, and how far the ring around the "+" fills as you pull                                                                                                                                                                 |
+| Lasso                 | 21    | Point in a loop, the loop closing itself, which strokes a loop takes, moving strokes without changing how they look, the box round a selection, and where its Delete button goes                                                                                                                                                                          |
+| Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                                                                                                                                                                                          |
+| Evaluation data       | 8     | Reading pen trajectory files for the real-handwriting measurement in section 8                                                                                                                                                                                                                                                                            |
 
 Two choices are worth noting. Layout and recognition are tested with **synthetic handwriting**: a
 fixture that turns a string such as `7.5÷2-60=` into stroke paths with controllable size, spacing
@@ -920,6 +944,8 @@ recognition would fail the build.
 - **The answer does not avoid ink.** It is drawn to the right of the `=`, or below the line when
   it would run off the page; it does not check for other writing there.
 - **Nothing is saved.** Reloading the app starts a fresh notebook.
+- **The lasso only moves and deletes.** There is no copy and paste, and no resizing or turning
+  of a selection.
 - **Touch scrolling has no momentum.** Two fingers move the pages exactly as far as they move.
 - **WASM runtime size.** The 14 MB runtime is far larger than the 1.6 MB model it runs. A
   hand-written forward pass for this four-layer network would be a few kilobytes; we judged a

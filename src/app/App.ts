@@ -5,6 +5,7 @@ import { RecognitionClient } from '../recognition/RecognitionClient';
 import { AnswerOverlay } from '../ui/AnswerOverlay';
 import { DEFAULT_INK, inkFor } from '../ui/inks';
 import type { Eraser } from '../ui/menus';
+import { SelectionBar } from '../ui/SelectionBar';
 import { ERASER_SIZE, PEN_SIZE, snapSize, stepSize } from '../ui/sizes';
 import { Toolbar } from '../ui/Toolbar';
 import type { Equation } from './equations';
@@ -24,6 +25,7 @@ export class App {
   private readonly notebook: HTMLElement;
   private readonly toolbar: Toolbar;
   private readonly notice: HTMLElement;
+  private readonly selectionBar: SelectionBar;
   private readonly recognition: RecognitionClient;
   private readonly pipeline: RecognitionPipeline;
   private readonly overlay: AnswerOverlay;
@@ -72,7 +74,8 @@ export class App {
     this.notice.className = 'notice';
     this.notice.setAttribute('role', 'status');
     this.notice.hidden = true;
-    page.append(this.pages.element, this.notice);
+    this.selectionBar = new SelectionBar(() => this.canvas.deleteSelection());
+    page.append(this.pages.element, this.notice, this.selectionBar.element);
 
     this.notebook.append(this.toolbar.element, page);
     root.append(this.notebook);
@@ -104,7 +107,12 @@ export class App {
       this.store.subscribe(() => this.refresh()),
       this.history.subscribe(() => this.refresh()),
       this.canvas.onActivity((active) => this.pipeline.setPenDown(active)),
-      this.canvas.onViewChanged(() => this.overlay.redraw()),
+      this.canvas.onViewChanged(() => {
+        this.overlay.redraw();
+        this.placeSelectionBar();
+      }),
+      this.canvas.onSelectionChanged(() => this.placeSelectionBar()),
+      this.canvas.onDrag((drag) => this.overlay.setDrag(drag)),
       this.pages.onScroll((top) => {
         this.canvas.setScroll(top);
         // The margin is ruled too. Moving its ruling with the pages keeps the lines
@@ -132,6 +140,7 @@ export class App {
     this.recognition.dispose();
     this.overlay.destroy();
     this.canvas.destroy();
+    this.selectionBar.destroy();
     this.pages.destroy();
     this.toolbar.destroy();
     this.notebook.remove();
@@ -152,9 +161,14 @@ export class App {
 
   private setTool(tool: Tool): void {
     this.tool = tool;
-    if (tool !== 'pen') this.eraser = tool;
+    if (tool === 'stroke-eraser' || tool === 'pixel-eraser') this.eraser = tool;
     this.canvas.setTool(tool);
     this.refresh();
+  }
+
+  /** Puts the Delete button beside what the lasso holds, or hides it. */
+  private placeSelectionBar(): void {
+    this.selectionBar.show(this.canvas.selectedBox, this.pages.scrollTop, this.canvas.size);
   }
 
   private setPenWidth(width: number): void {
@@ -176,10 +190,12 @@ export class App {
     this.refresh();
   }
 
-  /** Makes the tool in hand a number of steps thicker or thinner. */
+  /** Makes the tool in hand a number of steps thicker or thinner. The lasso has no size. */
   private nudgeSize(steps: number): void {
     if (this.tool === 'pen') this.setPenWidth(stepSize(PEN_SIZE, this.penWidth, steps));
-    else this.setEraserSize(stepSize(ERASER_SIZE, this.eraserSize, steps));
+    else if (this.tool !== 'lasso') {
+      this.setEraserSize(stepSize(ERASER_SIZE, this.eraserSize, steps));
+    }
   }
 
   /**
@@ -226,7 +242,11 @@ export class App {
     if (key === 'p') this.setTool('pen');
     else if (key === 'e') this.setTool('stroke-eraser');
     else if (key === 'r') this.setTool('pixel-eraser');
+    else if (key === 'l') this.setTool('lasso');
     else if (key === '[') this.nudgeSize(-1);
     else if (key === ']') this.nudgeSize(1);
+    else if (key === 'delete' || key === 'backspace') {
+      if (this.canvas.deleteSelection()) event.preventDefault();
+    } else if (key === 'escape') this.canvas.clearSelection();
   }
 }

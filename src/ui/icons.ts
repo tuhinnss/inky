@@ -16,6 +16,14 @@ export const icons = {
   pixelEraser: svg(
     '<path d="M3 20h4"/><path d="M17 20h4"/><path d="M9.2 16.8l-3-3a1.5 1.5 0 0 1 0-2.1l6.5-6.5a1.5 1.5 0 0 1 2.1 0l4 4a1.5 1.5 0 0 1 0 2.1l-5.5 5.5H9.2z"/><path d="M9.5 8.9l5.6 5.6"/>',
   ),
+  /** A lasso: a dashed loop with its rope trailing off. */
+  lasso: svg(
+    '<path d="M6.2 15.4C4.2 14.3 3 12.6 3 10.7 3 7 7 4 12 4s9 3 9 6.7-4 6.6-9 6.6c-1.2 0-2.3-.1-3.3-.4" stroke-dasharray="2.6 2.4"/><path d="M8.6 15.5c-1.6.4-2.4 1.6-1.9 2.8.6 1.4 2.6 1.4 3.2 0 .4-1-.3-2.4-1.3-2.8zM7.4 19.6c-.6 1-1.2 1.7-2.2 2.2"/>',
+  ),
+  /** A waste-paper basket, for deleting what the lasso holds. */
+  trash: svg(
+    '<path d="M4 7h16"/><path d="M9.5 7V4.8a.8.8 0 0 1 .8-.8h3.4a.8.8 0 0 1 .8.8V7"/><path d="M6 7l1 12.2a1 1 0 0 0 1 .8h8a1 1 0 0 0 1-.8L18 7"/><path d="M10 10.5v6"/><path d="M14 10.5v6"/>',
+  ),
   undo: svg('<path d="M8 6L4 10l4 4"/><path d="M4 10h9.5a5.5 5.5 0 0 1 0 11H10"/>'),
   redo: svg('<path d="M16 6l4 4-4 4"/><path d="M20 10h-9.5a5.5 5.5 0 0 0 0 11H14"/>'),
   /** A fresh sheet: the page with its corner turned. */

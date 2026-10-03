@@ -3,7 +3,11 @@ import {
   StrokeEdit,
   createStroke,
   eraseFromStroke,
+  inBox,
   inkBounds,
+  moveStrokes,
+  selectWithLasso,
+  selectionBounds,
   strokeIsHit,
   type Bounds,
   type History,
@@ -17,7 +21,21 @@ import { clientToPage, sanitizeDpr, type Position, type Size } from './coords';
 import { isPalm, type PenState } from './palm';
 import { livePath, strokePath } from './strokePath';
 
-export type Tool = 'pen' | 'stroke-eraser' | 'pixel-eraser';
+export type Tool = 'pen' | 'stroke-eraser' | 'pixel-eraser' | 'lasso';
+
+/** Strokes being dragged with the lasso, and how far they have gone. */
+export interface Drag {
+  /** Ids of the strokes as they were when picked up. */
+  ids: ReadonlySet<number>;
+  dx: number;
+  dy: number;
+  /** Set on the last report: the strokes were put down there. */
+  dropped: boolean;
+}
+
+function isEraser(tool: Tool): boolean {
+  return tool === 'stroke-eraser' || tool === 'pixel-eraser';
+}
 
 export interface InkCanvasOptions {
   inkColor: string;
@@ -36,18 +54,31 @@ interface Gesture {
   /** `mouse`, `touch` or `pen`, as the browser reported it. */
   pointerType: string;
   tool: Tool;
-  /** Pen: the samples so far. */
+  /** Pen: the samples so far. Lasso: the loop so far. */
   points: Point[];
   simulatePressure: boolean;
-  /** Erasers: where the tip was at the previous sample, and what it has removed. */
+  /**
+   * Erasers: where the tip was at the previous sample, and what it has removed.
+   * Lasso, when dragging the selection: where the pointer is now.
+   */
   last: Position;
   edits: EditBuilder;
+  /** Lasso: where a drag of the selection began. Absent while a loop is being drawn. */
+  grab?: Position;
   /** Where the pointer is on the screen, in case a second finger turns this into a scroll. */
   clientY: number;
 }
 
 /** Samples closer together than this add nothing but work. */
 const MIN_SAMPLE_DISTANCE = 0.3;
+/** The lasso's loop needs far fewer points than ink does. */
+const MIN_LOOP_DISTANCE = 3;
+/** Space between the selected ink and the dashed box drawn round it. */
+export const SELECTION_PAD = 6;
+/** A press this close outside the box still takes hold of the selection. */
+const GRAB_PAD = SELECTION_PAD + 8;
+const HIGHLIGHTER = 'rgba(255, 229, 102, 0.8)';
+const LASSO_LINE = 'rgba(28, 43, 110, 0.65)';
 
 /** The box of a stroke's ink, kept: strokes never change, and every redraw asks. */
 const boxes = new WeakMap<Stroke, Bounds>();
@@ -92,6 +123,15 @@ export class InkCanvas {
   private readonly pen: PenState = { seen: false, lastActivity: -Infinity };
   private readonly isWritable: (at: Position) => boolean;
   private readonly scrollPages: (dy: number) => void;
+
+  /** The strokes the lasso holds, and the box round their ink. */
+  private selection: readonly Stroke[] = [];
+  private selectionBox: Bounds | null = null;
+  /** Strokes lifted off the ink layer while they are dragged, and drawn on the live one. */
+  private lifted = new Set<Stroke>();
+  private liftedIds: ReadonlySet<number> = new Set();
+  private readonly selectionListeners = new Set<() => void>();
+  private readonly dragListeners = new Set<(drag: Drag | null) => void>();
 
   private frame = 0;
   private inkDirty = false;
@@ -169,7 +209,48 @@ export class InkCanvas {
   setTool(tool: Tool): void {
     this.tool = tool;
     this.host.dataset.tool = tool;
+    // A selection belongs to the lasso. Putting the lasso down lets go of it.
+    if (tool !== 'lasso') this.select([]);
     this.requestFrame('live');
+  }
+
+  /** The strokes the lasso holds. */
+  get selected(): readonly Stroke[] {
+    return this.selection;
+  }
+
+  /** The box round the selected ink, or null when nothing is selected or it is being moved. */
+  get selectedBox(): Bounds | null {
+    return this.gesture?.grab ? null : this.selectionBox;
+  }
+
+  /** Called when the selection changes, and when a drag of it starts or ends. */
+  onSelectionChanged(listener: () => void): () => void {
+    this.selectionListeners.add(listener);
+    return () => this.selectionListeners.delete(listener);
+  }
+
+  /**
+   * Called as the lasso drags strokes, so whatever is drawn for them can go along: with
+   * the distance so far, with `dropped` set when they are put down, and with null when the
+   * drag came to nothing and they stayed where they were.
+   */
+  onDrag(listener: (drag: Drag | null) => void): () => void {
+    this.dragListeners.add(listener);
+    return () => this.dragListeners.delete(listener);
+  }
+
+  clearSelection(): void {
+    this.select([]);
+  }
+
+  /** Removes the selected strokes from the page, as one undoable edit. */
+  deleteSelection(): boolean {
+    const doomed = this.selection;
+    if (doomed.length === 0 || this.gesture) return false;
+    this.select([]);
+    this.history.execute(new StrokeEdit(doomed, []));
+    return true;
   }
 
   setPenWidth(width: number): void {
@@ -227,6 +308,8 @@ export class InkCanvas {
     this.removeListeners.length = 0;
     this.activityListeners.clear();
     this.viewListeners.clear();
+    this.selectionListeners.clear();
+    this.dragListeners.clear();
     this.ink.element.remove();
     this.live.element.remove();
     this.overlay.element.remove();
@@ -260,6 +343,13 @@ export class InkCanvas {
     // start anywhere, since a stroke can stray off its page.
     if (tool === 'pen' && !this.isWritable(position)) return;
 
+    // With the lasso, a press on the selection takes hold of it to move it. A press
+    // anywhere else lets go of it and starts a new loop.
+    const grab =
+      tool === 'lasso' && this.selectionBox && inBox(position, this.selectionBox, GRAB_PAD)
+        ? position
+        : undefined;
+
     this.capture(event);
     this.gesture = {
       pointerId: event.pointerId,
@@ -270,11 +360,19 @@ export class InkCanvas {
       last: position,
       edits: new EditBuilder(),
       clientY: event.clientY,
+      grab,
     };
     this.hover = position;
 
-    if (tool === 'pen') this.addSample(event);
-    else this.erase(position);
+    if (tool === 'pen') {
+      this.addSample(event);
+    } else if (tool === 'lasso') {
+      if (grab) this.lift();
+      else this.select([]);
+      this.extendLasso(position);
+    } else {
+      this.erase(position);
+    }
 
     for (const listener of this.activityListeners) listener(true);
     this.requestFrame('live');
@@ -297,11 +395,13 @@ export class InkCanvas {
 
     const gesture = this.gesture;
     if (!gesture) {
-      // Nothing is down: just track the pointer so the eraser tip can follow the mouse.
+      // Nothing is down: just track the pointer, so the eraser tip can follow the mouse
+      // and the lasso can show when it is over something it can move.
       if (event.pointerType !== 'touch' && this.tool !== 'pen') {
         this.measureOrigin();
         this.hover = this.toPage(event);
-        this.requestFrame('live');
+        if (this.tool === 'lasso') this.showGrab(this.hover);
+        else this.requestFrame('live');
       }
       return;
     }
@@ -315,6 +415,7 @@ export class InkCanvas {
 
     for (const sample of samples) {
       if (gesture.tool === 'pen') this.addSample(sample);
+      else if (gesture.tool === 'lasso') this.extendLasso(this.toPage(sample));
       else this.erase(this.toPage(sample));
     }
     this.hover = this.toPage(event);
@@ -410,6 +511,8 @@ export class InkCanvas {
         // the live layer is cleared below. There is no frame where it is on neither.
         this.history.execute(new StrokeEdit([], [stroke]));
       }
+    } else if (gesture.tool === 'lasso') {
+      this.finishLasso(gesture, commit);
     } else {
       const edit = gesture.edits.build();
       if (!edit.isEmpty) {
@@ -420,6 +523,72 @@ export class InkCanvas {
 
     this.drawLive();
     for (const listener of this.activityListeners) listener(false);
+  }
+
+  /** Lasso: grows the loop, or, when the selection is held, moves it. */
+  private extendLasso(at: Position): void {
+    const gesture = this.gesture!;
+    if (gesture.grab) {
+      gesture.last = at;
+      this.reportDrag(at.x - gesture.grab.x, at.y - gesture.grab.y, false);
+      return;
+    }
+    const previous = gesture.points[gesture.points.length - 1];
+    if (previous && Math.hypot(at.x - previous.x, at.y - previous.y) < MIN_LOOP_DISTANCE) return;
+    gesture.points.push({ x: at.x, y: at.y, pressure: 0.5 });
+  }
+
+  /**
+   * A loop, once closed, selects what it holds. A drag of the selection puts it down where
+   * it was dropped, as one undoable edit: the strokes leave, and moved copies arrive.
+   */
+  private finishLasso(gesture: Gesture, commit: boolean): void {
+    if (!gesture.grab) {
+      if (commit) this.select(selectWithLasso(this.store.all(), gesture.points));
+      return;
+    }
+    const held = this.selection;
+    const dx = gesture.last.x - gesture.grab.x;
+    const dy = gesture.last.y - gesture.grab.y;
+    this.lifted = new Set();
+    if (commit && (dx !== 0 || dy !== 0)) {
+      const moved = moveStrokes(held, dx, dy);
+      this.reportDrag(dx, dy, true);
+      this.history.execute(new StrokeEdit(held, moved));
+      this.select(moved);
+    } else {
+      // Put back where they were.
+      for (const listener of this.dragListeners) listener(null);
+      this.requestFrame('ink');
+      for (const listener of this.selectionListeners) listener();
+    }
+  }
+
+  /** Takes the selection off the ink layer, to be drawn on the live layer as it moves. */
+  private lift(): void {
+    this.lifted = new Set(this.selection);
+    this.liftedIds = new Set(this.selection.map((stroke) => stroke.id));
+    this.requestFrame('ink');
+    for (const listener of this.selectionListeners) listener();
+  }
+
+  private reportDrag(dx: number, dy: number, dropped: boolean): void {
+    const drag: Drag = { ids: this.liftedIds, dx, dy, dropped };
+    for (const listener of this.dragListeners) listener(drag);
+  }
+
+  private select(strokes: readonly Stroke[]): void {
+    if (strokes.length === 0 && this.selection.length === 0) return;
+    this.selection = strokes;
+    this.selectionBox = selectionBounds(strokes);
+    this.requestFrame('live');
+    for (const listener of this.selectionListeners) listener();
+  }
+
+  /** The lasso shows a hand ready to move when it is over the selection. */
+  private showGrab(at: Position): void {
+    const over = this.selectionBox !== null && inBox(at, this.selectionBox, GRAB_PAD);
+    this.host.dataset.grab = String(over);
   }
 
   private addSample(event: PointerEvent): void {
@@ -481,6 +650,13 @@ export class InkCanvas {
     } else {
       this.requestFrame('ink');
     }
+
+    // An undo can take away strokes that were selected. What is left of the selection
+    // stays selected.
+    if (change.removed.length > 0 && this.selection.length > 0) {
+      const kept = this.selection.filter((stroke) => this.store.has(stroke.id));
+      if (kept.length < this.selection.length) this.select(kept);
+    }
   };
 
   private requestFrame(layer: 'ink' | 'live'): void {
@@ -505,7 +681,9 @@ export class InkCanvas {
     const bottom = top + this.ink.height;
     for (const stroke of this.store.all()) {
       const box = boxOf(stroke);
-      if (box.maxY >= top && box.minY <= bottom) this.fillStroke(stroke);
+      if (box.maxY >= top && box.minY <= bottom && !this.lifted.has(stroke)) {
+        this.fillStroke(stroke);
+      }
     }
   }
 
@@ -526,8 +704,18 @@ export class InkCanvas {
       return;
     }
 
-    const erasing = gesture ? gesture.tool !== 'pen' : this.tool !== 'pen';
-    if (erasing && this.hover) {
+    if (gesture?.tool === 'lasso' && !gesture.grab) {
+      this.drawLoop(ctx, gesture.points);
+      return;
+    }
+
+    if (this.selection.length > 0) {
+      const grab = gesture?.grab;
+      const offset = grab ? { x: gesture.last.x - grab.x, y: gesture.last.y - grab.y } : null;
+      this.drawSelection(ctx, offset ?? { x: 0, y: 0 });
+    }
+
+    if (isEraser(gesture?.tool ?? this.tool) && this.hover) {
       ctx.beginPath();
       ctx.arc(this.hover.x, this.hover.y, this.eraserRadius, 0, Math.PI * 2);
       ctx.fillStyle = gesture ? 'rgba(232, 121, 140, 0.25)' : 'rgba(232, 121, 140, 0.12)';
@@ -536,6 +724,54 @@ export class InkCanvas {
       ctx.strokeStyle = 'rgba(200, 80, 105, 0.9)';
       ctx.stroke();
     }
+  }
+
+  /** The lasso as it is drawn: a dashed line, closed back to where it began. */
+  private drawLoop(ctx: CanvasRenderingContext2D, loop: readonly Point[]): void {
+    if (loop.length < 2) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(loop[0].x, loop[0].y);
+    for (const point of loop) ctx.lineTo(point.x, point.y);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255, 229, 102, 0.16)';
+    ctx.fill();
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = LASSO_LINE;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * The selection: each stroke gone over with highlighter, and a dashed box round them
+   * all. While it is dragged it is drawn here at its new place, and not on the ink layer.
+   */
+  private drawSelection(ctx: CanvasRenderingContext2D, offset: Position): void {
+    ctx.save();
+    ctx.translate(offset.x, offset.y);
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 9;
+    ctx.strokeStyle = HIGHLIGHTER;
+    for (const stroke of this.selection) ctx.stroke(strokePath(stroke));
+    for (const stroke of this.selection) {
+      ctx.fillStyle = stroke.color;
+      ctx.fill(strokePath(stroke));
+    }
+    const box = this.selectionBox;
+    if (box) {
+      ctx.setLineDash([5, 4]);
+      ctx.lineWidth = 1.25;
+      ctx.strokeStyle = LASSO_LINE;
+      ctx.strokeRect(
+        box.minX - SELECTION_PAD,
+        box.minY - SELECTION_PAD,
+        box.maxX - box.minX + 2 * SELECTION_PAD,
+        box.maxY - box.minY + 2 * SELECTION_PAD,
+      );
+    }
+    ctx.restore();
   }
 
   private onResize(entry: ResizeObserverEntry | undefined): void {

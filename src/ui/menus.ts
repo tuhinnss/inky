@@ -4,17 +4,19 @@
 
 import type { Tool } from '../canvas/InkCanvas';
 
-/** The tool buttons that have a menu. Both erasers share one button. */
-export type ToolButton = 'pen' | 'eraser';
-export type Eraser = Exclude<Tool, 'pen'>;
+/** The tool buttons in the margin. Both erasers share one. */
+export type ToolButton = 'pen' | 'eraser' | 'lasso';
+/** The buttons with a menu. The lasso has nothing to set, so it has none. */
+export type MenuName = 'pen' | 'eraser';
+export type Eraser = 'stroke-eraser' | 'pixel-eraser';
 
 /** The button that holds a tool. */
 export function buttonFor(tool: Tool): ToolButton {
-  return tool === 'pen' ? 'pen' : 'eraser';
+  return tool === 'pen' || tool === 'lasso' ? tool : 'eraser';
 }
 
 /** Either a tool to pick up, or the menu to show afterwards (`null` for none). */
-export type Press = { select: Tool } | { menu: ToolButton | null };
+export type Press = { select: Tool } | { menu: MenuName | null };
 
 /**
  * What a press on a tool button does.
@@ -31,8 +33,9 @@ export function press(
   button: ToolButton,
   tool: Tool,
   eraser: Eraser,
-  open: ToolButton | null,
+  open: MenuName | null,
 ): Press {
-  if (buttonFor(tool) !== button) return { select: button === 'pen' ? 'pen' : eraser };
+  if (buttonFor(tool) !== button) return { select: button === 'eraser' ? eraser : button };
+  if (button === 'lasso') return { menu: null };
   return { menu: open === button ? null : button };
 }

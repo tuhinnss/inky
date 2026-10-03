@@ -4,10 +4,30 @@ import { DEFAULT_INK, INKS, inkFor } from '../../src/ui/inks';
 import { buttonFor, press } from '../../src/ui/menus';
 
 describe('which button holds a tool', () => {
-  it('gives the pen its own button and both erasers one between them', () => {
+  it('gives the pen and the lasso a button each and both erasers one between them', () => {
     expect(buttonFor('pen')).toBe('pen');
+    expect(buttonFor('lasso')).toBe('lasso');
     expect(buttonFor('stroke-eraser')).toBe('eraser');
     expect(buttonFor('pixel-eraser')).toBe('eraser');
+  });
+});
+
+describe('pressing the lasso', () => {
+  it('picks it up from any other tool', () => {
+    expect(press('lasso', 'pen', 'stroke-eraser', null)).toEqual({ select: 'lasso' });
+    expect(press('lasso', 'pixel-eraser', 'pixel-eraser', null)).toEqual({ select: 'lasso' });
+  });
+
+  it('opens no menu when it is already in hand: it has nothing to set', () => {
+    expect(press('lasso', 'lasso', 'stroke-eraser', null)).toEqual({ menu: null });
+  });
+
+  it('closes another menu on the way to picking it up', () => {
+    expect(press('lasso', 'pen', 'stroke-eraser', 'pen')).toEqual({ select: 'lasso' });
+  });
+
+  it('is left for the eraser used before it', () => {
+    expect(press('eraser', 'lasso', 'pixel-eraser', null)).toEqual({ select: 'pixel-eraser' });
   });
 });
 

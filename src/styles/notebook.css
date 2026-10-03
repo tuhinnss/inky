@@ -303,6 +303,57 @@
   cursor: none; /* the eraser tip is drawn on the canvas at its true size */
 }
 
+.page[data-tool='lasso'][data-grab='true'] {
+  cursor: move;
+}
+
+/* What can be done to the strokes the lasso holds, on a slip of paper beside them.
+   SelectionBar.ts places it with a transform. Above the canvases, so it is never inked over. */
+.selection-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  padding: 3px;
+  border: 1.5px solid color-mix(in srgb, var(--graphite) 45%, transparent);
+  border-radius: 3px 7px 4px 8px;
+  background: var(--paper);
+  box-shadow:
+    0 6px 16px rgb(28 43 110 / 14%),
+    0 1px 2px rgb(28 43 110 / 12%);
+}
+
+.selection-bar[hidden] {
+  display: none;
+}
+
+.selection-bar button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 12px 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  font-family: var(--hand);
+  font-weight: 300;
+  font-size: 18px;
+  color: var(--graphite);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.selection-bar button:hover {
+  background: color-mix(in srgb, var(--highlighter) 55%, transparent);
+}
+
+.selection-bar button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
 .layer {
   position: absolute;
   inset: 0;

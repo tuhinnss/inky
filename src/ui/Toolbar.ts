@@ -1,7 +1,7 @@
 import type { Tool } from '../canvas/InkCanvas';
 import { icons, penSample } from './icons';
 import { INKS } from './inks';
-import { buttonFor, press, type Eraser, type ToolButton } from './menus';
+import { buttonFor, press, type Eraser, type MenuName, type ToolButton } from './menus';
 import { ERASER_SIZE, PEN_SIZE, placePanel, sizeLabel, type SizeRange } from './sizes';
 
 export interface ToolbarState {
@@ -60,7 +60,8 @@ function element<K extends keyof HTMLElementTagNameMap>(
  */
 export class Toolbar {
   readonly element: HTMLElement;
-  private readonly menus: Record<ToolButton, Menu>;
+  private readonly menus: Record<MenuName, Menu>;
+  private readonly lassoButton: HTMLButtonElement;
   private readonly swatches = new Map<string, HTMLInputElement>();
   private readonly eraserModes = new Map<Eraser, HTMLInputElement>();
   private readonly undoButton: HTMLButtonElement;
@@ -70,7 +71,7 @@ export class Toolbar {
 
   /** The state last shown. What a press on a tool button does depends on what is in hand. */
   private state: ToolbarState | undefined;
-  private open: ToolButton | null = null;
+  private open: MenuName | null = null;
 
   constructor(private readonly actions: ToolbarActions) {
     const signal = this.abort.signal;
@@ -81,6 +82,10 @@ export class Toolbar {
     const tools = this.group('Tool');
     this.menus = { pen: this.penMenu(), eraser: this.eraserMenu() };
     for (const { button, panel } of Object.values(this.menus)) tools.append(button, panel);
+    this.lassoButton = this.button(icons.lasso, 'Lasso: select to move or delete', 'L', () =>
+      this.onPress('lasso'),
+    );
+    tools.append(this.lassoButton);
 
     const edits = this.group('History');
     this.undoButton = this.button(icons.undo, 'Undo', 'Ctrl+Z', () => actions.undo());
@@ -107,6 +112,7 @@ export class Toolbar {
     for (const [name, { button }] of this.entries()) {
       button.setAttribute('aria-pressed', String(name === inHand));
     }
+    this.lassoButton.setAttribute('aria-pressed', String(inHand === 'lasso'));
     // A menu belongs to the tool in hand. When a key changes the tool, its menu goes too.
     if (this.open && this.open !== inHand) this.closeMenu();
 
@@ -244,7 +250,7 @@ export class Toolbar {
     else this.closeMenu();
   }
 
-  private openMenu(name: ToolButton): void {
+  private openMenu(name: MenuName): void {
     this.closeMenu();
     const { button, panel, slider } = this.menus[name];
     this.open = name;
@@ -288,8 +294,8 @@ export class Toolbar {
 
   // ------------------------------------------------------------------- building
 
-  private entries(): Array<[ToolButton, Menu]> {
-    return Object.entries(this.menus) as Array<[ToolButton, Menu]>;
+  private entries(): Array<[MenuName, Menu]> {
+    return Object.entries(this.menus) as Array<[MenuName, Menu]>;
   }
 
   /** A row of radio buttons. Real ones, so the arrow keys move along it for free. */

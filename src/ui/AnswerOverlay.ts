@@ -1,5 +1,6 @@
 import type { Equation } from '../app/equations';
 import type { CanvasLayer } from '../canvas/CanvasLayer';
+import type { Drag } from '../canvas/InkCanvas';
 import type { Bounds } from '../ink';
 import type { Line } from '../layout';
 import type { Reading } from '../recognition/interpret';
@@ -42,6 +43,16 @@ export function answerOpacity(confidence: number): number {
 }
 
 /**
+ * Whether a drag carries the whole of an equation. One the lasso took only part of keeps
+ * its answer where it is until it is read again.
+ */
+export function isDragged(equation: Equation, drag: Drag): boolean {
+  return equation.line.symbols.every((symbol) =>
+    symbol.strokes.every((stroke) => drag.ids.has(stroke.id)),
+  );
+}
+
+/**
  * Draws everything the notebook writes back onto the page: answers, doubts and errors.
  *
  * The rule of the interface is that ink is the user's and pencil is the machine's, so
@@ -57,13 +68,27 @@ export class AnswerOverlay {
   private readonly shown = new Map<number, Shown>();
   private frame = 0;
   private readonly reducedMotion: boolean;
+  /** Strokes the lasso is dragging. What is written for them is drawn moved with them. */
+  private drag: Drag | null = null;
 
   constructor(private readonly layer: CanvasLayer) {
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
 
+  /**
+   * While the lasso drags a sum, its answer goes with it. Once the sum is dropped, the
+   * answer stays at the new place until the moved strokes have been read again and the
+   * fresh answer takes over, so it never jumps back for a moment.
+   */
+  setDrag(drag: Drag | null): void {
+    this.drag = drag;
+    this.requestDraw();
+  }
+
   setEquations(equations: readonly Equation[]): void {
     this.equations = equations;
+    // These were read from the page after the drop, from the moved strokes themselves.
+    if (this.drag?.dropped) this.drag = null;
     const now = performance.now();
 
     const present = new Set<number>();
@@ -110,6 +135,7 @@ export class AnswerOverlay {
       // onto it along the line: the answer carries on in the direction of the writing.
       const { tilt } = equation.line;
       ctx.save();
+      if (this.drag && isDragged(equation, this.drag)) ctx.translate(this.drag.dx, this.drag.dy);
       if (tilt) {
         ctx.translate(tilt.pivotX, tilt.pivotY);
         ctx.rotate(tilt.angle);
