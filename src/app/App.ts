@@ -2,12 +2,12 @@ import { InkCanvas, type Tool } from '../canvas/InkCanvas';
 import { History, StrokeEdit, StrokeStore } from '../ink';
 import { RecognitionClient } from '../recognition/RecognitionClient';
 import { AnswerOverlay } from '../ui/AnswerOverlay';
+import { DEFAULT_INK, inkFor } from '../ui/inks';
+import type { Eraser } from '../ui/menus';
 import { ERASER_SIZE, PEN_SIZE, snapSize, stepSize } from '../ui/sizes';
 import { Toolbar } from '../ui/Toolbar';
 import type { Equation } from './equations';
 import { RecognitionPipeline, type PipelineStats } from './RecognitionPipeline';
-
-const INK_COLOR = '#1c2b6e';
 
 /** Composition root: builds every part of the app and connects them. */
 export class App {
@@ -28,7 +28,10 @@ export class App {
   private noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
   private tool: Tool = 'pen';
+  /** The eraser the eraser button picks up: the one used last. */
+  private eraser: Eraser = 'stroke-eraser';
   private penWidth = PEN_SIZE.initial;
+  private penColor = DEFAULT_INK;
   /** Diameter of the eraser tip, shared by both erasers. */
   private eraserSize = ERASER_SIZE.initial;
 
@@ -39,6 +42,7 @@ export class App {
     this.toolbar = new Toolbar({
       selectTool: (tool) => this.setTool(tool),
       setPenWidth: (width) => this.setPenWidth(width),
+      setPenColor: (color) => this.setPenColor(color),
       setEraserSize: (size) => this.setEraserSize(size),
       undo: () => this.history.undo(),
       redo: () => this.history.redo(),
@@ -66,7 +70,7 @@ export class App {
     root.append(this.notebook);
 
     this.canvas = new InkCanvas(page, this.store, this.history, {
-      inkColor: INK_COLOR,
+      inkColor: this.penColor,
       penWidth: this.penWidth,
       eraserRadius: this.eraserSize / 2,
     });
@@ -131,6 +135,7 @@ export class App {
 
   private setTool(tool: Tool): void {
     this.tool = tool;
+    if (tool !== 'pen') this.eraser = tool;
     this.canvas.setTool(tool);
     this.refresh();
   }
@@ -138,6 +143,13 @@ export class App {
   private setPenWidth(width: number): void {
     this.penWidth = snapSize(PEN_SIZE, width);
     this.canvas.setPenWidth(this.penWidth);
+    this.refresh();
+  }
+
+  /** Changes the colour of the strokes still to be written. Those on the page keep theirs. */
+  private setPenColor(color: string): void {
+    this.penColor = inkFor(color).value;
+    this.canvas.setInkColor(this.penColor);
     this.refresh();
   }
 
@@ -162,7 +174,9 @@ export class App {
     this.notebook.dataset.empty = String(this.store.size === 0);
     this.toolbar.update({
       tool: this.tool,
+      eraser: this.eraser,
       penWidth: this.penWidth,
+      penColor: this.penColor,
       eraserSize: this.eraserSize,
       canUndo: this.history.canUndo,
       canRedo: this.history.canRedo,

@@ -53,20 +53,21 @@ symbol it read, the answer is written more faintly and the doubtful symbol gets 
 beneath it. When an expression does not make sense, the symbol at fault is marked and a note says
 why; nothing is written where the answer would go.
 
-| Tool, in the margin                        | Key      |
-| ------------------------------------------ | -------- |
-| Pen                                        | `P`      |
-| Erase whole strokes                        | `E`      |
-| Rub out part of a stroke                   | `R`      |
-| Size of the pen or the eraser, on a slider | `[` `]`  |
-| Undo                                       | `Ctrl+Z` |
-| Redo                                       | `Ctrl+Y` |
-| Clear the page (can be undone)             |          |
+| Tool, in the margin                              | Key      |
+| ------------------------------------------------ | -------- |
+| Pen                                              | `P`      |
+| Eraser, rubbing out whole strokes                | `E`      |
+| Eraser, rubbing out only the part it passes over | `R`      |
+| Make the pen or the eraser thicker or thinner    | `[` `]`  |
+| Undo                                             | `Ctrl+Z` |
+| Redo                                             | `Ctrl+Y` |
+| Clear the page (can be undone)                   |          |
 
-The size button shows the size of whichever tool is in hand. Press it for a slider with a
-true-size preview: pen width from 1.5 to 12 px, eraser tip from 8 to 80 px. The eraser end of a
-stylus erases without changing tool, and a hand resting on the screen while you write with a
-stylus is ignored.
+Press a tool once to pick it up, and press it again for its menu. The pen's menu sets its width,
+from 1.5 to 12 px, and its colour, from six inks. The eraser's menu sets the size of its tip, from
+8 to 80 px, and whether it rubs out whole strokes or only the part it passes over. Both show the
+size you are choosing at its true size. The eraser end of a stylus erases without changing tool,
+and a hand resting on the screen while you write with a stylus is ignored.
 
 ## How it works
 
@@ -122,7 +123,7 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 | `npm run dev`         | Start the dev server                                                                    |
 | `npm run build`       | Type-check, then build to `dist/`                                                       |
 | `npm run preview`     | Serve the production build locally                                                      |
-| `npm test`            | Run the 571 unit and integration tests once                                             |
+| `npm test`            | Run the 587 unit and integration tests once                                             |
 | `npm run typecheck`   | Type-check without building                                                             |
 | `npm run lint`        | Lint the source. Fails on `eval` or `new Function`                                      |
 | `npm run format`      | Format the source with Prettier                                                         |

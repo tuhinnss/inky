@@ -59,7 +59,7 @@ export class InkCanvas {
 
   private tool: Tool = 'pen';
   private penWidth: number;
-  private readonly inkColor: string;
+  private inkColor: string;
   private eraserRadius: number;
 
   private gesture: Gesture | null = null;
@@ -147,6 +147,11 @@ export class InkCanvas {
 
   setPenWidth(width: number): void {
     this.penWidth = width;
+  }
+
+  /** Each stroke keeps the colour it was written in, so this changes only the next ones. */
+  setInkColor(color: string): void {
+    this.inkColor = color;
   }
 
   setEraserRadius(radius: number): void {

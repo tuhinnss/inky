@@ -608,6 +608,29 @@ these arrive": drawing adds one, erasing removes some, pixel-erasing swaps a str
 fragments, and clearing removes all. Undo is the same command reversed. The many store changes of
 one eraser drag are folded into one undo step.
 
+### The tools and their menus
+
+The margin has two tool buttons, the pen and the eraser. The first press on either picks the tool
+up. Pressing it again while it is in hand opens its menu. Another press, a press anywhere else, or
+Escape closes it again. A small corner on the button in hand shows that it has a menu. Most drawing
+apps work this way, and the extra press goes on the right thing: tools change often and sizes and
+colours rarely, so changing tool takes one press.
+
+- **The pen's menu** has the width (1.5 to 12 px) on a slider, a sample line drawn at the true
+  width and in the true colour, and six inks. Each stroke stores its own colour, so a new ink
+  changes only what is written next. Every ink has a contrast of at least 4.5 to 1 against the
+  paper, and none is the pencil grey of the answers, so what you wrote and what the notebook worked
+  out never look alike. Recognition does not see colour at all, because it redraws each symbol
+  from its coordinates (section 3, step 4).
+- **The eraser's menu** has the tip size (8 to 80 px), with the tip drawn at its true size, and
+  what it rubs out: whole strokes, or only the part it passes over. The two erasers used to have a
+  button each. They now share one, which picks up the eraser used last, and the keys `E` and `R`
+  still pick each one directly.
+
+The choices in a menu are real radio buttons, hidden behind the swatches and labels, so the arrow
+keys and screen readers work with them without extra code. Which press does what is a pure
+function, `press` in [`menus.ts`](../src/ui/menus.ts), tested on its own.
+
 ## 5. Keeping the main thread free
 
 The frame budget at 60 FPS is 16.7 ms. Three mechanisms keep recognition out of it.
@@ -813,7 +836,7 @@ What makes that hold:
 
 ## 9. Tests
 
-571 tests in 24 files, run with Vitest in Node. `npm test` takes about two seconds.
+587 tests in 25 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area                  | Tests | What is covered                                                                                                                                                                                                                          |
 | --------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -829,6 +852,7 @@ What makes that hold:
 | Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                                                                                           |
 | Answer overlay        | 30    | What is written after the "=" or under a rule and how dark, the dotted line under a doubted symbol, the note for a line that makes no sense, that no question mark is ever drawn, and that the answer follows a line written at an angle |
 | Tool sizes            | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                                                                                         |
+| Tool menus            | 16    | Which press picks a tool up and which opens or closes its menu, the eraser button picking up the eraser used last, and the inks: all different, readable on the paper, never the grey of the answers                                     |
 | Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                                                                         |
 | Evaluation data       | 8     | Reading pen trajectory files for the real-handwriting measurement in section 8                                                                                                                                                           |
 
