@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readEquation, type Equation } from '../../src/app/equations';
 import type { CanvasLayer } from '../../src/canvas/CanvasLayer';
-import { segmentLine } from '../../src/layout';
+import { layoutPage, segmentLine } from '../../src/layout';
 import { MODEL_SYMBOLS, type ModelSymbol } from '../../src/recognition/model';
 import {
   AnswerOverlay,
   answerOpacity,
   answerText,
+  isDragged,
   LOW_CONFIDENCE,
 } from '../../src/ui/AnswerOverlay';
-import { ink, strokesOf } from '../fixtures/ink';
+import { ink, inkColumn, strokesOf, turned } from '../fixtures/ink';
 
 /** An equation as the pipeline would hand it over, read with the given confidence. */
 function equation(text: string, confidence = 1, x = 40): Equation {
@@ -27,24 +28,58 @@ function equation(text: string, confidence = 1, x = 40): Equation {
   return { ...readEquation({ id: 1, version: 1, line }, cache), confidence };
 }
 
-interface Drawn {
+/** A column sum read as if every symbol had been recognised with `confidence`. */
+function column(rows: string[], confidence = 1): Equation {
+  const written = inkColumn(rows, { right: 400, y: 60, size: 80 });
+  const [line] = layoutPage(written.strokes);
+  const chars = written.rows.flat().map((symbol) => symbol.char as ModelSymbol);
+  const cache = new Map<string, Float32Array>();
+  line.symbols.forEach((symbol, i) => {
+    if (symbol.kind !== 'shape') return;
+    cache.set(
+      symbol.key,
+      Float32Array.from(MODEL_SYMBOLS, (s) => (s === chars[i] ? 1 : 0)),
+    );
+  });
+  return { ...readEquation({ id: 1, version: 1, line }, cache), confidence };
+}
+
+interface Text {
   text: string;
   /** Left and right edge of the text, by the fake context's simple metrics. */
   left: number;
   right: number;
+  /** Where the text was put vertically, as given to fillText. */
+  y: number;
+  /** How opaque it was drawn: the alpha of the fill colour. */
+  opacity: number;
   /** The clip in force when the text was drawn. */
   clip: { left: number; right: number } | undefined;
+}
+
+/** A straight dotted line, as drawn under a doubtful symbol. */
+interface Dotted {
+  left: number;
+  right: number;
+  y: number;
 }
 
 /** Every glyph is half an em wide. Enough to check that what is drawn fits where it goes. */
 const widthOf = (text: string, font: string): number =>
   text.length * 0.5 * Number(/(\d+(?:\.\d+)?)px/.exec(font)?.[1] ?? 0);
 
-/** A canvas context that records text and the clip it was drawn under. */
+/** A canvas context that records the text and the dotted lines drawn on it. */
 function fakeLayer(width: number) {
-  const drawn: Drawn[] = [];
-  const clips: Array<Drawn['clip']> = [undefined];
-  let pending: Drawn['clip'];
+  const texts: Text[] = [];
+  const dotted: Dotted[] = [];
+  /** Every turn of the canvas, in radians, in the order made. */
+  const turns: number[] = [];
+  /** Every shift of the canvas, in the order made. */
+  const shifts: Array<[number, number]> = [];
+  const clips: Array<Text['clip']> = [undefined];
+  let pending: Text['clip'];
+  let dash: number[] = [];
+  let path: Array<{ x: number; y: number }> = [];
 
   const ctx = {
     font: '',
@@ -56,32 +91,78 @@ function fakeLayer(width: number) {
     lineCap: 'butt',
     lineJoin: 'miter',
     save: () => clips.push(clips[clips.length - 1]),
-    restore: () => clips.pop(),
-    beginPath: () => (pending = undefined),
+    restore: () => {
+      clips.pop();
+      dash = [];
+    },
+    beginPath: () => {
+      pending = undefined;
+      path = [];
+    },
     rect: (x: number, _y: number, w: number) => (pending = { left: x, right: x + w }),
     clip: () => (clips[clips.length - 1] = pending),
-    moveTo: () => undefined,
-    lineTo: () => undefined,
-    stroke: () => undefined,
-    setLineDash: () => undefined,
+    moveTo: (x: number, y: number) => path.push({ x, y }),
+    lineTo: (x: number, y: number) => path.push({ x, y }),
+    stroke: () => {
+      if (dash.length > 0 && path.length === 2) {
+        dotted.push({ left: path[0].x, right: path[1].x, y: path[0].y });
+      }
+    },
+    setLineDash: (segments: number[]) => (dash = segments),
+    translate: (x: number, y: number) => shifts.push([x, y]),
+    rotate: (angle: number) => turns.push(angle),
     measureText: (text: string) => ({ width: widthOf(text, ctx.font) }),
-    fillText: (text: string, x: number) => {
+    fillText: (text: string, x: number, y: number) => {
       const w = widthOf(text, ctx.font);
       const left = ctx.textAlign === 'center' ? x - w / 2 : x;
-      drawn.push({ text, left, right: left + w, clip: clips[clips.length - 1] });
+      const opacity = Number(/,\s*([\d.]+)\)$/.exec(ctx.fillStyle)?.[1] ?? 1);
+      texts.push({ text, left, right: left + w, y, opacity, clip: clips[clips.length - 1] });
     },
   };
 
-  const layer = { ctx, width, height: 600, clear: () => (drawn.length = 0) };
-  return { layer: layer as unknown as CanvasLayer, drawn };
+  const clear = (): void => {
+    texts.length = 0;
+    dotted.length = 0;
+    turns.length = 0;
+    shifts.length = 0;
+  };
+  const layer = { ctx, width, height: 600, clear } as unknown as CanvasLayer;
+  return { layer, texts, dotted, turns, shifts };
 }
 
-function show(equations: Equation[], pageWidth = 1200): Drawn[] {
-  const { layer, drawn } = fakeLayer(pageWidth);
+function show(
+  equations: Equation[],
+  pageWidth = 1200,
+): { texts: Text[]; dotted: Dotted[]; turns: number[] } {
+  const { layer, texts, dotted, turns } = fakeLayer(pageWidth);
   const overlay = new AnswerOverlay(layer);
   overlay.setEquations(equations);
   overlay.redraw();
-  return [...drawn];
+  return { texts: [...texts], dotted: [...dotted], turns: [...turns] };
+}
+
+/** A line written at an angle, read as if every symbol had been recognised. */
+function askew(text: string, degrees: number): Equation {
+  const written = ink(text, { size: 80, x: 100, y: 400 });
+  const [line] = layoutPage(turned(written, degrees));
+  const cache = new Map<string, Float32Array>();
+  line.symbols.forEach((symbol, i) => {
+    if (symbol.kind !== 'shape') return;
+    const char = written[i].char as ModelSymbol;
+    cache.set(
+      symbol.key,
+      Float32Array.from(MODEL_SYMBOLS, (s) => (s === char ? 1 : 0)),
+    );
+  });
+  return readEquation({ id: 1, version: 1, line }, cache);
+}
+
+/** Makes the symbol at `index` the one the notebook was unsure of. */
+function doubting(sum: Equation, index: number): Equation {
+  const readings = sum.readings.map((reading, i) =>
+    i === index ? { ...reading, confidence: 0.4 } : reading,
+  );
+  return { ...sum, readings, confidence: 0.4 };
 }
 
 beforeEach(() => {
@@ -102,8 +183,8 @@ describe('what is pencilled in after the "="', () => {
     expect(answerText(equation('9÷0='))).toBe('Undefined');
   });
 
-  it('is a question mark for a malformed sum', () => {
-    expect(answerText(equation('3++2='))).toBe('?');
+  it('is nothing for a sum that does not make sense', () => {
+    expect(answerText(equation('3++2='))).toBeNull();
   });
 
   it('is nothing before the "=" is written', () => {
@@ -131,34 +212,231 @@ describe('how dark an answer is drawn', () => {
 describe('drawing an answer', () => {
   it('writes the answer to the right of the "="', () => {
     const sum = equation('18+4×3=');
-    const [answer] = show([sum]).filter((d) => d.text === '30');
+    const [answer] = show([sum]).texts;
+    expect(answer.text).toBe('30');
     expect(answer.left).toBeGreaterThan(sum.line.bounds.maxX);
   });
 
-  it('adds no question mark to an answer it is sure of', () => {
-    expect(show([equation('18+4×3=', 0.95)]).map((d) => d.text)).toEqual(['30']);
+  it('writes the answer and nothing else, sure or not', () => {
+    expect(show([equation('18+4×3=', 0.95)]).texts.map((t) => t.text)).toEqual(['30']);
+    expect(show([doubting(equation('18+4×3='), 2)]).texts.map((t) => t.text)).toEqual(['30']);
   });
 
-  it('marks a doubtful answer with a question mark after it', () => {
-    const drawn = show([equation('18+4×3=', LOW_CONFIDENCE - 0.1)]);
-    const answer = drawn.find((d) => d.text === '30');
-    const mark = drawn.find((d) => d.text === '?');
-    expect(mark?.left).toBeGreaterThan(answer?.right ?? Infinity);
+  it('writes a doubtful answer more faintly than a sure one', () => {
+    const [sure] = show([equation('18+4×3=', 0.95)]).texts;
+    const [unsure] = show([equation('18+4×3=', LOW_CONFIDENCE - 0.1)]).texts;
+    expect(unsure.opacity).toBeLessThan(sure.opacity);
+    expect(unsure.opacity).toBeGreaterThan(0.4); // faint, but there to be read
   });
 
-  // The write-on animation reveals the answer through a clip. A mark outside that clip
-  // shows as a stray speck beside the answer, or not at all.
-  it('reveals the whole question mark, not a sliver of it', () => {
-    const mark = show([equation('18+4×3=', LOW_CONFIDENCE - 0.1)]).find((d) => d.text === '?');
-    expect(mark?.clip?.left).toBeLessThanOrEqual(mark?.left ?? -Infinity);
-    expect(mark?.clip?.right).toBeGreaterThanOrEqual(mark?.right ?? Infinity);
+  it('reveals the whole answer through the write-on clip', () => {
+    const [answer] = show([equation('18+4×3=')]).texts;
+    expect(answer.clip?.left).toBeLessThanOrEqual(answer.left);
+    expect(answer.clip?.right).toBeGreaterThanOrEqual(answer.right);
   });
 
-  it('keeps a doubtful answer and its mark on a page with little room left', () => {
-    const sum = equation('18+4×3=', LOW_CONFIDENCE - 0.1);
+  it('keeps the answer on a page with little room left', () => {
+    const sum = equation('18+4×3=');
     const pageWidth = sum.line.bounds.maxX + 90;
-    for (const piece of show([sum], pageWidth).filter((d) => d.text === '30' || d.text === '?')) {
-      expect(piece.right).toBeLessThanOrEqual(pageWidth);
+    const [answer] = show([sum], pageWidth).texts;
+    expect(answer.right).toBeLessThanOrEqual(pageWidth);
+  });
+});
+
+describe('showing doubt', () => {
+  it('draws a dotted line under the symbol it was unsure of, and only that one', () => {
+    const sum = doubting(equation('18+4×3='), 3); // the "4"
+    const { dotted } = show([sum]);
+    const four = sum.line.symbols[3].bounds;
+
+    expect(dotted).toHaveLength(1);
+    expect(dotted[0].left).toBeLessThanOrEqual(four.minX);
+    expect(dotted[0].right).toBeGreaterThanOrEqual(four.maxX);
+    expect(dotted[0].y).toBeGreaterThan(sum.line.bounds.maxY);
+  });
+
+  it('draws no dotted line when it was sure of everything', () => {
+    expect(show([equation('18+4×3=')]).dotted).toEqual([]);
+  });
+
+  it('marks each of several doubtful symbols', () => {
+    const sum = doubting(doubting(equation('18+4×3='), 0), 5);
+    expect(show([sum]).dotted).toHaveLength(2);
+  });
+
+  it('marks a doubtful symbol on a line that has no answer yet', () => {
+    const { texts, dotted } = show([doubting(equation('18+4'), 1)]);
+    expect(texts).toEqual([]);
+    expect(dotted).toHaveLength(1);
+  });
+
+  it('never writes a question mark, whatever it has to say', () => {
+    const everything = [
+      equation('18+4×3=', 0.2),
+      doubting(equation('96-27='), 1),
+      equation('3++2='),
+      equation('9÷0=', 0.3),
+      equation('='),
+      doubting(column(['8', '7', '+3']), 1),
+      column(['8', '++3']),
+    ].map((each, id) => ({ ...each, id }));
+
+    for (const { text } of show(everything).texts) expect(text).not.toContain('?');
+  });
+});
+
+describe('a line that does not make sense', () => {
+  it('gets a note saying why, and nothing where the answer would be', () => {
+    const { texts } = show([equation('3++2=')]);
+    expect(texts).toHaveLength(1);
+    expect(texts[0].text).toContain('needs a number');
+  });
+
+  it('has the note below the line', () => {
+    const sum = equation('3++2=');
+    const [note] = show([sum]).texts;
+    expect(note.y).toBeGreaterThan(sum.line.bounds.maxY);
+  });
+
+  it('keeps the note on the page when the fault is near the right edge', () => {
+    const sum = equation('3++2=', 1, 700);
+    const pageWidth = sum.line.bounds.maxX + 20;
+    const [note] = show([sum], pageWidth).texts;
+    expect(note.right).toBeLessThanOrEqual(pageWidth);
+    expect(note.left).toBeGreaterThanOrEqual(0);
+  });
+
+  it('gets no note when it is only a bare "=", a line not yet written', () => {
+    expect(show([equation('=')]).texts).toEqual([]);
+  });
+});
+
+describe('drawing the answer of a column sum', () => {
+  it('writes it under the rule', () => {
+    const sum = column(['8', '7', '+3']);
+    const [answer] = show([sum]).texts;
+    expect(answer.text).toBe('18');
+    expect(answer.y).toBeGreaterThan(sum.line.column!.rule.bounds.maxY);
+  });
+
+  it('ends it under the last digits of the rows above', () => {
+    const sum = column(['125', '+48']);
+    const [answer] = show([sum]).texts;
+    const digitsEnd = Math.max(...sum.line.column!.rows.map((row) => row.bounds.maxX));
+    expect(answer.text).toBe('173');
+    expect(answer.right).toBeCloseTo(digitsEnd, 0);
+  });
+
+  it('keeps a long answer on the page', () => {
+    const sum = column(['8', '÷0']); // "Undefined" is far wider than the column
+    for (const pageWidth of [1200, 430]) {
+      const [answer] = show([sum], pageWidth).texts;
+      expect(answer.text).toBe('Undefined');
+      expect(answer.left).toBeGreaterThanOrEqual(0);
+      expect(answer.right).toBeLessThanOrEqual(pageWidth);
     }
+  });
+
+  it('marks a doubtful digit just under its own row, clear of the row below', () => {
+    const sum = doubting(column(['8', '7', '+3']), 1); // the "7", in the second row
+    const { dotted, texts } = show([sum]);
+    const [, second, third] = sum.line.column!.rows;
+
+    expect(texts.map((t) => t.text)).toEqual(['18']);
+    expect(dotted).toHaveLength(1);
+    expect(dotted[0].y).toBeGreaterThan(second.bounds.maxY);
+    expect(dotted[0].y).toBeLessThan(third.bounds.minY);
+  });
+
+  it('writes the reason under the rule of a column that makes no sense', () => {
+    const sum = column(['8', '++3']);
+    const { texts } = show([sum]);
+    expect(texts).toHaveLength(1);
+    expect(texts[0].text).toContain('needs a number');
+    expect(texts[0].y).toBeGreaterThan(sum.line.bounds.maxY);
+  });
+});
+
+describe('a line written at an angle', () => {
+  it('has its answer written along the line, by turning the canvas the way the line runs', () => {
+    const sum = askew('18+4×3=', 25);
+    const { texts, turns } = show([sum]);
+
+    expect(sum.line.tilt).toBeDefined();
+    expect(texts.map((t) => t.text)).toEqual(['30']);
+    expect(turns).toEqual([sum.line.tilt!.angle]);
+  });
+
+  it('has the answer after the "=", measured along the line', () => {
+    const sum = askew('18+4×3=', -25);
+    const [answer] = show([sum]).texts;
+    const equals = sum.line.symbols[sum.line.symbols.length - 1].bounds;
+    // Both are in the line's own level frame, which is the frame the canvas was turned to.
+    expect(answer.left).toBeGreaterThan(equals.maxX);
+    expect(answer.y).toBeGreaterThan(equals.minY - 10);
+    expect(answer.y).toBeLessThan(equals.maxY + 10);
+  });
+
+  it('does not turn the canvas for a level line', () => {
+    expect(show([equation('18+4×3=')]).turns).toEqual([]);
+  });
+
+  it('turns it for the askew line only, when both are on the page', () => {
+    const level = { ...equation('96-27='), id: 1 };
+    const sloped = { ...askew('18+4×3=', 25), id: 2 };
+    expect(show([level, sloped]).turns).toHaveLength(1);
+  });
+});
+
+describe('a sum dragged with the lasso', () => {
+  const idsOf = (sum: Equation): Set<number> =>
+    new Set(sum.line.symbols.flatMap((symbol) => symbol.strokes.map((stroke) => stroke.id)));
+
+  /** The overlay, showing `equations`, and what it drew in its last frame. */
+  function overlayOf(equations: Equation[]) {
+    const fake = fakeLayer(1200);
+    const overlay = new AnswerOverlay(fake.layer);
+    overlay.setEquations(equations);
+    const frame = () => {
+      overlay.redraw();
+      return { texts: [...fake.texts], shifts: [...fake.shifts] };
+    };
+    return { overlay, frame };
+  }
+
+  it('is carried whole only when the lasso holds every one of its strokes', () => {
+    const sum = equation('96-27=');
+    const all = idsOf(sum);
+    expect(isDragged(sum, { ids: all, dx: 0, dy: 0, dropped: false })).toBe(true);
+    const some = new Set([...all].slice(1));
+    expect(isDragged(sum, { ids: some, dx: 0, dy: 0, dropped: false })).toBe(false);
+  });
+
+  it('takes its answer along while it is dragged, and leaves the others', () => {
+    const dragged = { ...equation('96-27='), id: 1 };
+    const still = { ...equation('7+5=', 1, 600), id: 2 };
+    const { overlay, frame } = overlayOf([dragged, still]);
+    overlay.setDrag({ ids: idsOf(dragged), dx: 40, dy: 180, dropped: false });
+    const { texts, shifts } = frame();
+    expect(texts.map((t) => t.text).sort()).toEqual(['12', '69']);
+    expect(shifts).toEqual([[40, 180]]);
+  });
+
+  it('keeps the answer at the drop until the moved sum has been read again', () => {
+    const sum = equation('96-27=');
+    const { overlay, frame } = overlayOf([sum]);
+    overlay.setDrag({ ids: idsOf(sum), dx: 40, dy: 180, dropped: true });
+    expect(frame().shifts).toEqual([[40, 180]]);
+    // The reading of the moved strokes arrives: it is drawn where it is, unshifted.
+    overlay.setEquations([equation('96-27=', 1, 80)]);
+    expect(frame().shifts).toEqual([]);
+  });
+
+  it('puts the answer back when the drag comes to nothing', () => {
+    const sum = equation('96-27=');
+    const { overlay, frame } = overlayOf([sum]);
+    overlay.setDrag({ ids: idsOf(sum), dx: 40, dy: 180, dropped: false });
+    overlay.setDrag(null);
+    expect(frame().shifts).toEqual([]);
   });
 });

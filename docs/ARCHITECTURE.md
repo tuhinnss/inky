@@ -184,6 +184,68 @@ its vertical position. The other 15 symbols are classified by the model.
 [Section 3](#combining-the-model-with-geometry) describes how geometry and model output are
 combined for the remaining ambiguous cases.
 
+### Two helpers for digits
+
+The chosen model reads 99.4% of its own test set and only 93.5% of digits written by people it
+has never seen (section 8). No candidate does better alone. We ran all five on the same 3,498
+real pen-written digits:
+
+| Model               | Real digits read correctly |
+| ------------------- | -------------------------- |
+| altynbk `cnn_aug`   | 93.5%                      |
+| ONNX Zoo `mnist-12` | 91.7%                      |
+| Sagyam MobileNetV2  | 91.1%                      |
+| kbss0000            | 91.1%                      |
+| mathex              | 89.6%                      |
+
+Swapping models would therefore make things worse. But the models fail on _different_ digits,
+because each learned from different handwriting. Ours takes a `4` written in one stroke for a
+`9`; `mnist-12` reads that `4` correctly and is itself poor at `9`.
+
+So two of the smallest candidates are bundled as **digit helpers** and vote alongside the main
+model ([`ensemble.ts`](../src/recognition/ensemble.ts)):
+
+- **mathex** `mathex_v1.h5`: two convolutions and three dense layers, 60,137 parameters, 0.24 MB.
+- **ONNX Model Zoo `mnist-12`**: two convolutions and one dense layer, 5,998 parameters, 0.03 MB.
+
+The main model alone decides what _kind_ of symbol something is. When it gives a symbol any real
+chance of being a digit, each helper is shown the symbol, prepared the way that helper's own
+published code prepares an image. The probability the main model gave to "a digit" is then shared
+out among the ten digits in proportion to
+
+```
+P_main(d)  x  P_mathex(d)^0.5  x  P_mnist(d)^0.25
+```
+
+The helpers only move probability between digits. They cannot turn a digit into an operator or
+the reverse, since they do not know operators, and the operator probabilities come back
+bit-for-bit unchanged, which a test checks.
+
+**The weights were not tuned on the test.** The data set is split by writer. The two exponents
+were chosen on its 30 training writers (7,494 digits) from a small grid, and only then measured on
+the 14 test writers.
+
+| Voting on digits                  | Extra download | 30 writers used to choose | 14 other writers |
+| --------------------------------- | -------------- | ------------------------- | ---------------- |
+| Main model alone                  | none           | 96.25%                    | 93.48%           |
+| With mathex and `mnist-12` voting | 0.27 MB        | 98.41%                    | **97.80%**       |
+
+Misread digits fall from 228 to 77 on the test writers. Asking the main model about ten slightly
+rotated and sheared copies of each digit and averaging, the obvious alternative that needs no
+extra model, gave 94.5% for ten times the work.
+
+**No training.** `mnist-12.onnx` is bundled byte for byte. The mathex weights are copied into an
+ONNX graph by [`scripts/model/convert_helpers.py`](../scripts/model/convert_helpers.py); on 1,000
+images the copy and the Keras original agree to within 0.000005 on every output and on the top
+class every time.
+
+**Licences.** Both are permissive, and neither is as tidy as one would like. The mathex repository
+has an MIT `LICENSE` file whose copyright line is still the template placeholder. The `mnist-12`
+README says "License: MIT" with no licence text, in a repository that is Apache-2.0. Both are
+reproduced in [`public/models/LICENSE.txt`](../public/models/LICENSE.txt). mathex was trained on a
+Kaggle set of handwritten math symbols and `mnist-12` on MNIST; as with the main model, we ship
+weights and no images.
+
 ### Provenance and licence check
 
 We read the licence files ourselves. Two things are worth stating plainly.
@@ -277,6 +339,47 @@ A second pass rejoins fragments on the same row, judging gaps against the line's
 instead of the two neighbouring strokes. Without it, erasing the `3` from `4 × 3 =` would orphan
 the `=`: `×` and `=` are both short, and the hole between them is wider than either.
 
+### Lines that are not horizontal
+
+A line can slope in two ways, and they need opposite treatment
+([`tilt.ts`](../src/layout/tilt.ts)).
+
+It can **climb**: the symbols stay upright and each sits a little higher than the last, as
+handwriting drifts on unruled paper. Because lines are built link by link from neighbouring
+strokes, this already works, and nothing is done about it.
+
+Or it can be **turned**: the whole line, symbols and all, is written at an angle, as when the
+tablet lies askew. Then every symbol is rotated, and that changes what it is. A `+` turned 45° is
+a `×`. The bars of `=` and `−` stop being flat, which is how geometry knows them. Measured on
+synthetic handwriting, turned lines were read correctly up to 15° and not at all by 30°.
+
+So a turned line is turned back level before it is read:
+
+1. **Direction.** The direction of a line is the principal axis of its strokes' centres: the
+   straight line they stray from least. Dots are left out, since they sit off it.
+2. **Turned or climbing?** The `=` at the end tells them apart. Its bars are drawn along the
+   writer's own horizontal: level on a climbing line, sloped with the line on a turned one. A line
+   counts as turned when it slopes by 15° or more and its last two strokes are straight bars
+   running within 15° of the line's direction.
+3. **Level it.** Every stroke of the line is rotated back about the line's centre, and the steps
+   that follow see a level line. The copies keep their strokes' ids. The turn, in whole degrees,
+   is added to each symbol's cache key, because the same ink turned by a different amount is a
+   different picture to the model.
+
+The line then carries its tilt with it. When the answer is drawn, the canvas is rotated by the
+same amount first, so the answer continues along the line the writing follows.
+
+| Line written at | Turned, before | Turned, now | Climbing |
+| --------------- | -------------- | ----------- | -------- |
+| up to 15°       | read           | read        | read     |
+| 20°             | 7 of 14        | 14 of 14    | 14 of 14 |
+| 25°             | 4 of 14        | 14 of 14    | 14 of 14 |
+| 30°             | 0 of 14        | 14 of 14    | 14 of 14 |
+| 40°             | 0 of 14        | 9 of 14     | 11 of 14 |
+
+Each cell is seven sums, sloping up and sloping down. Beyond about 35° it is line grouping that
+fails, not reading: a steep line breaks into pieces.
+
 ### Step 3: symbols
 
 Within a line, strokes are merged into symbols by **horizontal overlap**. The strokes of one
@@ -293,6 +396,47 @@ Dots are handled separately, because overlap gives the wrong answer for them in 
 
 Every symbol gets a key: the ids of its strokes. Because strokes are immutable and ids are never
 reused, two symbols with the same key are guaranteed to be the same ink.
+
+### Sums written as a column
+
+Arithmetic is also written the way it is taught: numbers one under another, the operator at the
+left, and a line drawn underneath.
+
+```
+     8
+     7        reads as  8 + 7 + 3 =   and the answer, 18, is written under the line
+  +  3
+  ‾‾‾‾‾
+```
+
+The line, the _rule_, is what makes it a sum, as `=` does on a line of writing. It is also the one
+stroke that the steps above cannot handle: lying under a whole row, it overlaps every symbol above
+it and would be merged with them. So rules are found first, before any lines are formed.
+
+1. **Candidates.** A candidate is a flat stroke with no writing level with it. A minus sign has
+   digits either side, the bars of `=` have the sum to their left, the bar of `+` has its upright
+   through it; a rule sits below a row with nothing beside it. Bars that continue one another end
+   to end are joined, since a long rule is often drawn in two goes.
+2. **Rows.** For each candidate, only the ink directly over it is grouped into lines, by itself.
+   That keeps rows apart whatever is written beside the column. Each row then takes in strokes
+   standing close beside it, which picks up an operator written to the left of where the rule
+   starts. Starting at the rule, the rows are climbed one by one for as long as each sits directly
+   on the last. The climb stops at a gap, at another rule, or at a line containing an `=`.
+3. **Verdict.** A candidate with at least two rows above it, wide enough to have been meant as a
+   rule, is a column. The rest go back to being ordinary strokes, and because that changes what
+   the remaining candidates may claim, the search is repeated without them. The set only shrinks,
+   so this ends; in practice it runs once or twice.
+
+Whatever is left on the page is then laid out as ordinary lines. A column comes out of layout as a
+line like any other, with its symbols listed row by row and the rule last, so caching, versioning
+and stale-result handling apply to it unchanged. Its rows are read separately, so that a decimal
+point is judged against its own row and not against the whole column.
+
+The rows are then written out as one expression for the math engine. The convention is the
+schoolbook one: an operator at the left of a row joins that row to those above; a row with none
+takes the next operator found below it, so a single `+` on the last row adds the whole column; a
+column with no operator at all is added up. A row that is itself a calculation is bracketed, so
+`2+3` over `×4` is 20. The rule is never sent to the model: it is the `=` by position alone.
 
 ### Step 4: stroke coordinates to tensor
 
@@ -319,6 +463,20 @@ drawn next to the equation, and the size of the handwriting. A test confirms the
 symbol identically at handwriting sizes from 24 px to 320 px and at pen widths across the whole
 range of the size slider, 1.5 px to 12 px.
 
+### Images for the digit helpers
+
+A symbol the main model allows to be a digit is drawn twice more, for the two helpers of section
+2 ([`helperImages.ts`](../src/recognition/helperImages.ts)). Each helper has its own published
+way of preparing an image, and a model only reads what looks like its training data, so those
+steps are reproduced as upstream wrote them rather than tidied up. Both begin from a 280 px
+drawing of the symbol, as a drawing app would save it. For mathex it is made black-and-white,
+cropped to the symbol with ten extra pixels on the right and below, and squeezed to 28x28 without
+regard to its proportions. For `mnist-12` the ink is scaled to fit a 20x20 box, proportions kept,
+and placed in a 28x28 frame with its centre of mass at the centre, as the MNIST digits were.
+
+All of this runs in the worker. The worker and the tests call the same function,
+[`recognise.ts`](../src/recognition/recognise.ts), so the tests exercise what ships.
+
 ### Combining the model with geometry
 
 Normalising a symbol to fill the frame is what makes the model insensitive to size. It is also
@@ -340,7 +498,7 @@ value is the confidence shown to the user.
 
 The weights are soft on purpose. A weight of 0.05 does not forbid a reading; it means the model
 must be twenty times surer of it to win. Geometry scales the model's opinion and never replaces
-it. All 15 of these classes are always the model's call.
+it. All 15 of these classes are always the models' call.
 
 The decimal point is the one exception, for the reason given in section 2: a lone dot is never
 sent to the model. It is read as `.` with high confidence when it sits in the lower part of the
@@ -355,6 +513,15 @@ of the stroke group at fault, which is how the interface underlines the right pl
 
 The answer is drawn on the overlay canvas immediately to the right of the `=`, at the size of
 the handwriting.
+
+**Doubt is shown without a word.** An equation is only as sure as its least sure symbol. When that
+falls below 0.6, the answer is the same answer written more faintly, and each symbol the notebook
+was unsure of gets a dotted pencil line beneath it. An earlier version also wrote a `?` after the
+answer and the doubted reading under the symbol; in use these crowded the page and read as noise,
+so they were removed. The faint answer says "check this" and the dotted line says where.
+
+A line that does not make sense gets no answer at all: a zigzag under the symbol at fault and a
+short note saying why.
 
 ## 4. Drawing
 
@@ -376,6 +543,42 @@ The paper grid is a CSS background, not canvas drawing. It costs nothing per fra
 
 There is no standing render loop. A frame is requested only when something changed, and at most
 once per display refresh however many pointer events arrive.
+
+### Pages
+
+The notebook is a stack of pages down a scrolling desk
+([`PageStack.ts`](../src/canvas/PageStack.ts), [`pageGeometry.ts`](../src/canvas/pageGeometry.ts)).
+Every page is the same height, with a gap of one grid square between two, and strokes are stored
+in the coordinates of the whole stack: a stroke on page three simply has a larger `y`. Layout and
+recognition need no change for that. Two sums on different pages are far apart, so they are two
+lines like any others.
+
+- **Only the paper scrolls.** The sheets are HTML elements with the ruling as their background.
+  The three canvases stay the size of the window, laid over them, and show whatever part is in
+  view. Canvases as tall as all the pages would cost about 20 MB each per page at a tablet's pixel
+  ratio. The scroll position is part of each canvas's transform, so the code that draws strokes
+  and answers still works in page coordinates. On each scroll event the ink and the answers are
+  redrawn at once, in the same frame as the paper moves, and strokes out of view are skipped. With
+  three pages holding 423 strokes and 42 answers, at a pixel ratio of 2, a scroll frame cost
+  0.2 ms at the median and 0.9 ms at worst.
+- **Scrolling.** The wheel and the scrollbar scroll as usual. On a touchscreen one finger writes,
+  so two fingers scroll. When a second finger lands while the first is writing, that stroke is
+  dropped, as if never drawn, and both fingers scroll from then on. A touch taken for a resting
+  hand never scrolls (palm rejection, below).
+- **A new page.** Below the last page is a "+". Press it, or carry on scrolling past it: at the
+  end there is nothing left to scroll, so the wheel or the fingers pull on it instead. A ring
+  around the "+" fills as you pull, and empties again if you stop. When it is full, a page is
+  added and the view glides to its top. A page is added only after one with writing on it, so a
+  fast spin of the wheel cannot stack up blank pages; under a blank page the "+" is faint and
+  says to write on it first.
+- **How tall.** A page starts as tall as the window, rounded up to whole squares so that every
+  page starts on a ruling line. While there is one page it follows the window. Once there is a
+  second it keeps its height, since changing it would move the break between the two under the
+  ink.
+- **Clearing** removes the pages along with the writing. Undoing it brings back as many pages as
+  the writing needs: the page count always covers the lowest stroke.
+- A stroke cannot begin in a gap between two pages or below the last one. It can stray into a
+  gap once begun, and an eraser can start anywhere.
 
 ### High-DPI displays
 
@@ -400,11 +603,25 @@ Pointer Events give one code path for mouse, touch and stylus.
   batches the extra samples into one event; `getCoalescedEvents()` recovers them, for a smoother
   curve.
 - **Pointer capture** keeps a stroke going if the pointer leaves the canvas.
-- **Palm rejection.** Touches are ignored for 400 ms after a pen lifts, and only one pointer draws
-  at a time.
+- **Palm rejection.** Someone writing with a stylus rests their hand on the glass, usually a moment
+  before the pen tip arrives, and the screen reports that hand as a touch. Only one pointer draws
+  at a time, and on top of that ([`palm.ts`](../src/canvas/palm.ts)):
+  - _The pen outranks a touch._ If a touch has already begun a stroke when the pen comes down, the
+    touch was the hand: its stroke is discarded, leaving nothing in the undo history, and the pen
+    writes.
+  - _A touch near the pen in time is the hand._ A stylus reports while it hovers. A touch within
+    400 ms of the pen last being seen, touching or hovering, is ignored.
+  - _A touch too large for a fingertip is the hand._ A contact patch over 48 px across is ignored.
+
+  None of this applies until a stylus has been used. On a device without one, every touch is a
+  finger that means to write, however broad. And a fingertip can still write on a stylus device
+  once the pen has been away for a moment.
+
 - The eraser end of a stylus erases without changing tool.
-- The live canvas asks for a `desynchronized` context, which lets the browser present it without
-  waiting for the compositor.
+- The canvases use ordinary contexts. An earlier version asked for a `desynchronized` (low-latency)
+  context for the layer under the pen. On an Android tablet that layer came out as an opaque black
+  sheet over the whole page, because a canvas in that mode cannot always be transparent there. One
+  frame of latency was not worth a black page.
 
 ### Smooth ink
 
@@ -426,6 +643,52 @@ Undo uses the command pattern with a single command. Every operation is "these s
 these arrive": drawing adds one, erasing removes some, pixel-erasing swaps a stroke for its
 fragments, and clearing removes all. Undo is the same command reversed. The many store changes of
 one eraser drag are folded into one undo step.
+
+### The tools and their menus
+
+The margin has two tool buttons, the pen and the eraser. The first press on either picks the tool
+up. Pressing it again while it is in hand opens its menu. Another press, a press anywhere else, or
+Escape closes it again. A small corner on the button in hand shows that it has a menu. Most drawing
+apps work this way, and the extra press goes on the right thing: tools change often and sizes and
+colours rarely, so changing tool takes one press.
+
+- **The pen's menu** has the width (1.5 to 12 px) on a slider, a sample line drawn at the true
+  width and in the true colour, and six inks. Each stroke stores its own colour, so a new ink
+  changes only what is written next. Every ink has a contrast of at least 4.5 to 1 against the
+  paper, and none is the pencil grey of the answers, so what you wrote and what the notebook worked
+  out never look alike. Recognition does not see colour at all, because it redraws each symbol
+  from its coordinates (section 3, step 4).
+- **The eraser's menu** has the tip size (8 to 80 px), with the tip drawn at its true size, and
+  what it rubs out: whole strokes, or only the part it passes over. The two erasers used to have a
+  button each. They now share one, which picks up the eraser used last, and the keys `E` and `R`
+  still pick each one directly.
+
+The choices in a menu are real radio buttons, hidden behind the swatches and labels, so the arrow
+keys and screen readers work with them without extra code. Which press does what is a pure
+function, `press` in [`menus.ts`](../src/ui/menus.ts), tested on its own.
+
+### The lasso
+
+The third tool selects strokes to move or delete ([`selection.ts`](../src/ink/selection.ts)).
+
+- **Selecting.** Draw a loop round what you want. It need not be closed: the loop is taken to run
+  back from its end to its start. A stroke is selected when more than half of it lies inside,
+  tested point by point by casting a ray and counting how many edges of the loop it crosses. So a
+  careless loop still takes a symbol whose tail pokes out, and leaves a neighbour it only clips.
+- **Showing it.** Each selected stroke is gone over with highlighter and a dashed box is drawn
+  round them all, on the live layer. A slip of paper beside the box holds a Delete button; the
+  Delete key does the same.
+- **Moving.** A press inside the box, or just outside it, takes hold of the selection. While it is
+  dragged, its strokes are left out of the ink layer and drawn on the live layer at the new
+  place, so a frame of dragging costs the same as a frame of writing. Answers whose sums are
+  wholly selected move along with them. When the selection is dropped, the strokes leave the page
+  and moved copies arrive, as one undoable edit: the same single command as drawing and erasing
+  (section 4, "Erasing and undo"). The copies are new strokes, so the moved sum is read again,
+  which takes a few milliseconds; its answer stays at the drop until the new reading replaces it.
+- **Letting go.** Tapping elsewhere, pressing Escape or picking up another tool lets go of the
+  selection. An undo that takes away selected strokes takes them out of the selection too.
+
+It works with a finger, a stylus or a mouse, and two fingers still scroll.
 
 ## 5. Keeping the main thread free
 
@@ -513,14 +776,15 @@ lines, the tests cover them, and a model that could read them would need no pars
 ## 7. Working offline
 
 A service worker generated by `vite-plugin-pwa` (Workbox) precaches every file the app can
-request: the HTML, scripts, styles, the font, the icons, the model and the WASM runtime. That is
-16 files and 16.0 MB, of which 14.2 MB is the ONNX runtime (3.7 MB over the wire with gzip).
+request: the HTML, scripts, styles, the font, the icons, the models and the WASM runtime. That is
+19 files and 16.3 MB, of which 14.2 MB is the ONNX runtime (3.7 MB over the wire with gzip) and
+1.85 MB is the three models.
 
 After one online visit the app loads and recognises with no network at all. It tells the user
 when that point is reached, with a note at the foot of the page.
 
 Verified by loading the production build once, switching the browser context offline, reloading,
-writing `18+4×3=` and reading back 30, with no failed request. During the online load all 13
+writing `18+4×3=` and reading back 30, with no failed request. During the online load all 14
 requests went to the app's own origin. There is no third-party request of any kind: no CDN, no
 analytics, no font service.
 
@@ -538,19 +802,63 @@ still busy.
 
 | Metric                                     | Result                      |
 | ------------------------------------------ | --------------------------- |
-| Frames sampled (with the pen down)         | 2,763 (1,063)               |
-| Longest frame                              | 14.0 ms                     |
+| Frames sampled (with the pen down)         | 2,282 (622)                 |
+| Longest frame                              | 7.8 ms                      |
 | Frames over 16.7 ms                        | 0                           |
 | Long tasks (over 50 ms) on the main thread | 0                           |
-| Main-thread cost of reading the page       | 1.4 ms median, 2.9 ms worst |
-| Worker time for a new symbol               | about 20 ms                 |
+| Main-thread cost of reading the page       | 1.3 ms median, 2.8 ms worst |
+| Worker time for a new symbol               | about 9 ms                  |
 
 ### Inference
 
-From the model benchmark in section 2, under the same WASM runtime: 3.7 ms for one symbol and
-29 ms for a batch of eight, single-threaded. On a fresh page load the first answer appeared 2.7 s
-after the first stroke began; that includes writing the expression and the runtime finishing its
-start-up.
+Single-threaded, under the same WASM runtime the browser uses, median of 100 runs:
+
+| What is classified           | Main model alone | With the digit helpers |
+| ---------------------------- | ---------------- | ---------------------- |
+| One digit                    | 3.7 ms           | 5.2 ms                 |
+| One operator                 | 3.7 ms           | 3.7 ms                 |
+| An equation of eight symbols | 30.6 ms          | 37.0 ms                |
+| Eight digits                 | 29.5 ms          | 39.4 ms                |
+
+The helpers cost about 1.5 ms per digit, including drawing their images, and nothing for an
+operator, which they are never shown. In the browser the three models load and warm up in about
+0.35 s. On a fresh page load the first answer appeared 2.4 s after the first stroke began; that
+includes writing the expression and the runtime finishing its start-up.
+
+### Accuracy on real handwriting
+
+The model's own test set is images, and the unit tests use synthetic strokes. To measure the
+path the app actually takes, strokes in and a symbol out, we ran it on the UCI pen digits data
+set: digits written with a stylus on a tablet and stored as pen trajectories. The figures are for
+its writer-independent test set, 3,498 digits by 14 people, none of whom the model has seen.
+
+| Measure                                                        | Result           |
+| -------------------------------------------------------------- | ---------------- |
+| Main model alone, each digit's strokes given as one symbol     | 93.48% (3,270)   |
+| With the digit helpers voting (what the app does)              | 97.80% (3,421)   |
+| Whole path: layout groups the strokes, geometry weighs in      | 96.86% (3,388)   |
+| Digits that layout split into more than one symbol             | 36               |
+| With the helpers, at 40 px and 160 px and pens from 2 to 12 px | 97.14% to 97.86% |
+| Misreads that the confidence indicator flags (below 0.6)       | 19.5%            |
+| Correct readings it flags                                      | 0.3%             |
+
+The first row is where this measurement began, and it said two things. The result barely moved
+with writing size or pen width, so the rasteriser was doing its job and the gap to the 99.4% of
+the model's own test set was the model meeting writers unlike those it was trained on. And the
+errors were concentrated: 52 of the 228 were a `4` written in one stroke without lifting the pen,
+a form the training data did not contain, read as `9`.
+
+That is what led to the digit helpers of section 2, which remove two thirds of the errors. Of the
+77 that remain, 26 are a `9` read as `3`; no other confusion occurs more than six times. Every
+digit but `9` (89.9%) and `8` (96.7%) is now read correctly at least 97.9% of the time.
+
+The whole path is a point lower than recognition alone because of layout, not reading: 36 digits
+written in two strokes that do not overlap, mostly `4` and `5`, are taken for two symbols. A digit
+standing alone gives layout nothing to judge its size against; within a line of writing the
+neighbours do.
+
+The data set has digits only, so the operators are not covered by this measurement. It can be
+repeated with `npm run eval:digits`; see [scripts/eval](../scripts/eval/README.md).
 
 ### Memory
 
@@ -587,20 +895,27 @@ What makes that hold:
 
 ## 9. Tests
 
-366 tests in 16 files, run with Vitest in Node. `npm test` takes about two seconds.
+631 tests in 28 files, run with Vitest in Node. `npm test` takes about two seconds.
 
-| Area              | Tests | What is covered                                                                                                                                                           |
-| ----------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Math engine       | 89    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws |
-| Coordinates       | 50    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion                                                                                |
-| Layout            | 36    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence                                                                             |
-| Ink               | 38    | Undo/redo stack behaviour, gesture folding, both erasers                                                                                                                  |
-| Rasteriser        | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                  |
-| Model integration | 30    | The bundled ONNX model on our rasteriser: every symbol, five handwriting sizes, six pen widths across the slider's range                                                  |
-| Geometry fusion   | 21    | Stroke arrangements, fusion weights, the decimal point                                                                                                                    |
-| Pipeline          | 50    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol                                                                                      |
-| Answer overlay    | 12    | What is written after the "=", how dark, and that the doubt mark fits inside the write-on reveal and on the page                                                          |
-| Tool sizes        | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                          |
+| Area                  | Tests | What is covered                                                                                                                                                                                                                                                                                                                                           |
+| --------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Math engine           | 89    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws                                                                                                                                                                                 |
+| Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                                                                                                                                                                                                          |
+| Layout                | 64    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence, telling a turned line from a climbing one and turning it level                                                                                                                                                                                             |
+| Ink                   | 38    | Undo/redo stack behaviour, gesture folding, both erasers                                                                                                                                                                                                                                                                                                  |
+| Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                                                                                                                                                                                                  |
+| Model integration     | 53    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads, lines turned and climbing at up to 30°                                                                                                                                                     |
+| Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                                                                                                                                                                                                           |
+| Geometry fusion       | 21    | Stroke arrangements, fusion weights, the decimal point                                                                                                                                                                                                                                                                                                    |
+| Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                                                                                                                                                                                                       |
+| Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                                                                                                                                                                                                            |
+| Answer overlay        | 34    | What is written after the "=" or under a rule and how dark, the dotted line under a doubted symbol, the note for a line that makes no sense, that no question mark is ever drawn, and that the answer follows a line written at an angle, and that an answer goes with its sum while the lasso drags it and stays at the drop until the sum is read again |
+| Tool sizes            | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                                                                                                                                                                                                          |
+| Tool menus            | 20    | Which press picks a tool up and which opens or closes its menu, the eraser button picking up the eraser used last, the lasso having no menu, and the inks: all different, readable on the paper, never the grey of the answers                                                                                                                            |
+| Pages                 | 15    | Where each page is, the page under a point and none in a gap, how many pages the writing needs, page heights on whole grid squares, and how far the ring around the "+" fills as you pull                                                                                                                                                                 |
+| Lasso                 | 21    | Point in a loop, the loop closing itself, which strokes a loop takes, moving strokes without changing how they look, the box round a selection, and where its Delete button goes                                                                                                                                                                          |
+| Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                                                                                                                                                                                          |
+| Evaluation data       | 8     | Reading pen trajectory files for the real-handwriting measurement in section 8                                                                                                                                                                                                                                                                            |
 
 Two choices are worth noting. Layout and recognition are tested with **synthetic handwriting**: a
 fixture that turns a string such as `7.5÷2-60=` into stroke paths with controllable size, spacing
@@ -610,17 +925,28 @@ recognition would fail the build.
 
 ## 10. Limitations
 
-- **Accuracy has been measured on synthetic handwriting and on the model's own test set, not on
-  a study of real users.** The model's training data came from a small number of writers.
+- **About one real digit in thirty is misread.** On pen-written digits from people the models
+  have not seen, the whole path reads 96.9% correctly (section 8). A `9` read as `3` is the
+  largest single cause that remains. Operators have been measured on synthetic handwriting only.
+- **A digit written in two strokes that do not overlap can be split in two.** This happened to 36
+  of 3,498 real digits, mostly `4` and `5`.
 - **Symbols must not overlap horizontally.** Segmentation is by horizontal overlap, so digits
   written touching or on top of each other are read as one symbol. Cursive-style joined digits
   are not supported.
-- **One line per equation.** Fractions, exponents and expressions that wrap are out of scope.
+- **Lines steeper than about 35° are not read**, and a steep line that breaks in two can give an
+  answer for the part that ends in `=`. Lines sloping less are read whether they climb or are
+  turned (section 3). A column sum must be upright.
+- **Two layouts only: a line ending in `=`, or a column over a rule.** Fractions, exponents,
+  long division and expressions that wrap are out of scope. In a column, carries or working
+  written among the rows would be read as part of them.
 - **No parentheses.** The parser handles them; the model has no class for them.
 - **A dot is only ever a decimal point.** A stray speck low on the line will be read as one.
 - **The answer does not avoid ink.** It is drawn to the right of the `=`, or below the line when
   it would run off the page; it does not check for other writing there.
-- **The page does not scroll.** It is one screen of paper.
+- **Nothing is saved.** Reloading the app starts a fresh notebook.
+- **The lasso only moves and deletes.** There is no copy and paste, and no resizing or turning
+  of a selection.
+- **Touch scrolling has no momentum.** Two fingers move the pages exactly as far as they move.
 - **WASM runtime size.** The 14 MB runtime is far larger than the 1.6 MB model it runs. A
   hand-written forward pass for this four-layer network would be a few kilobytes; we judged a
   maintained runtime the better engineering trade.

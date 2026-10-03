@@ -15,8 +15,16 @@
 
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts"]
+  "include": [
+    "src",
+    "tests",
+    "scripts/**/*.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "vitest.eval.config.ts"
+  ]
 }

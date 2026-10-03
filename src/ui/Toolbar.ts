@@ -1,10 +1,15 @@
 import type { Tool } from '../canvas/InkCanvas';
 import { icons, penSample } from './icons';
-import { ERASER_SIZE, PEN_SIZE, placePanel, sizeLabel } from './sizes';
+import { INKS } from './inks';
+import { buttonFor, press, type Eraser, type MenuName, type ToolButton } from './menus';
+import { ERASER_SIZE, PEN_SIZE, placePanel, sizeLabel, type SizeRange } from './sizes';
 
 export interface ToolbarState {
   tool: Tool;
+  /** The eraser the eraser button picks up: the one used last. */
+  eraser: Eraser;
   penWidth: number;
+  penColor: string;
   /** Diameter of the eraser tip. */
   eraserSize: number;
   canUndo: boolean;
@@ -15,22 +20,26 @@ export interface ToolbarState {
 export interface ToolbarActions {
   selectTool(tool: Tool): void;
   setPenWidth(width: number): void;
+  setPenColor(color: string): void;
   setEraserSize(size: number): void;
   undo(): void;
   redo(): void;
   clear(): void;
 }
 
-const TOOLS: ReadonlyArray<{ tool: Tool; label: string; shortcut: string; icon: string }> = [
-  { tool: 'pen', label: 'Pen', shortcut: 'P', icon: icons.pen },
-  { tool: 'stroke-eraser', label: 'Erase whole strokes', shortcut: 'E', icon: icons.strokeEraser },
-  {
-    tool: 'pixel-eraser',
-    label: 'Rub out part of a stroke',
-    shortcut: 'R',
-    icon: icons.pixelEraser,
-  },
+const ERASERS: ReadonlyArray<{ tool: Eraser; label: string; shortcut: string; icon: string }> = [
+  { tool: 'stroke-eraser', label: 'Whole strokes', shortcut: 'E', icon: icons.strokeEraser },
+  { tool: 'pixel-eraser', label: 'Part of a stroke', shortcut: 'R', icon: icons.pixelEraser },
 ];
+
+/** A tool button and the menu it opens once its tool is in hand. */
+interface Menu {
+  button: HTMLButtonElement;
+  panel: HTMLElement;
+  /** Focused when the menu opens, so the arrow keys change the size straight away. */
+  slider: HTMLInputElement;
+  sizeValue: HTMLElement;
+}
 
 function element<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -43,24 +52,26 @@ function element<K extends keyof HTMLElementTagNameMap>(
 
 /**
  * The tools in the page margin. Purely a view: it renders the state it is given and
- * reports what the user asked for. The only thing it keeps to itself is whether its size
- * panel is open.
+ * reports what the user asked for. The only thing it keeps to itself is which menu is open.
+ *
+ * The pen and the eraser each have a menu. The first press on either picks the tool up;
+ * pressing it again while it is in hand opens the menu, with the size and the colour of the
+ * pen, or the size of the eraser and what it rubs out.
  */
 export class Toolbar {
   readonly element: HTMLElement;
-  private readonly toolButtons = new Map<Tool, HTMLButtonElement>();
-  private readonly sizeButton: HTMLButtonElement;
-  private readonly sizePanel: HTMLElement;
-  private readonly sizeName: HTMLElement;
-  private readonly sizeValue: HTMLElement;
-  private readonly sizeSlider: HTMLInputElement;
+  private readonly menus: Record<MenuName, Menu>;
+  private readonly lassoButton: HTMLButtonElement;
+  private readonly swatches = new Map<string, HTMLInputElement>();
+  private readonly eraserModes = new Map<Eraser, HTMLInputElement>();
   private readonly undoButton: HTMLButtonElement;
   private readonly redoButton: HTMLButtonElement;
   private readonly clearButton: HTMLButtonElement;
   private readonly abort = new AbortController();
 
-  /** Which size the slider is setting. It follows the selected tool. */
-  private sizing: 'pen' | 'eraser' = 'pen';
+  /** The state last shown. What a press on a tool button does depends on what is in hand. */
+  private state: ToolbarState | undefined;
+  private open: MenuName | null = null;
 
   constructor(private readonly actions: ToolbarActions) {
     const signal = this.abort.signal;
@@ -69,67 +80,53 @@ export class Toolbar {
     this.element.setAttribute('aria-label', 'Drawing tools');
 
     const tools = this.group('Tool');
-    for (const { tool, label, shortcut, icon } of TOOLS) {
-      const button = this.button(icon, label, shortcut, () => actions.selectTool(tool));
-      this.toolButtons.set(tool, button);
-      tools.append(button);
-    }
-
-    // One size control for whichever tool is selected. The button shows the size as a
-    // dot; the slider lives in a panel so that it has room to be dragged precisely.
-    const size = this.group('Size');
-    this.sizeButton = this.button('<span class="size-dot"></span>', 'Size', '', () =>
-      this.togglePanel(),
+    this.menus = { pen: this.penMenu(), eraser: this.eraserMenu() };
+    for (const { button, panel } of Object.values(this.menus)) tools.append(button, panel);
+    this.lassoButton = this.button(icons.lasso, 'Lasso: select to move or delete', 'L', () =>
+      this.onPress('lasso'),
     );
-    this.sizeButton.classList.add('tool-size');
-    this.sizeButton.setAttribute('aria-haspopup', 'true');
-    this.sizeButton.setAttribute('aria-expanded', 'false');
-
-    this.sizeName = element('span', 'size-name');
-    this.sizeValue = element('span', 'size-value');
-    const head = element('p', 'size-head');
-    head.append(this.sizeName, this.sizeValue);
-
-    // Both samples are drawn at the real size, so the panel shows exactly what you get:
-    // a line of ink for the pen, the tip itself for the eraser. The stylesheet picks one.
-    const preview = element('div', 'size-preview');
-    preview.innerHTML = penSample;
-    preview.append(element('span', 'size-dot'));
-
-    this.sizeSlider = element('input', 'size-slider');
-    this.sizeSlider.type = 'range';
-    this.sizeSlider.addEventListener('input', () => this.onSlide(), { signal });
-
-    this.sizePanel = element('div', 'size-panel');
-    this.sizePanel.setAttribute('role', 'group');
-    this.sizePanel.hidden = true;
-    this.sizePanel.append(head, preview, this.sizeSlider);
-    size.append(this.sizeButton, this.sizePanel);
+    tools.append(this.lassoButton);
 
     const edits = this.group('History');
     this.undoButton = this.button(icons.undo, 'Undo', 'Ctrl+Z', () => actions.undo());
     this.redoButton = this.button(icons.redo, 'Redo', 'Ctrl+Y', () => actions.redo());
-    this.clearButton = this.button(icons.clear, 'Clear the page', '', () => actions.clear());
+    this.clearButton = this.button(icons.clear, 'Clear all pages', '', () => actions.clear());
     edits.append(this.undoButton, this.redoButton, this.clearButton);
 
-    this.element.append(tools, size, edits);
+    this.element.append(tools, edits);
 
-    // The panel closes the way a menu does: press anywhere else, press Escape, or change
-    // the layout under it. Capturing means the page still gets the press, so reaching
-    // for the paper both closes the panel and starts the stroke.
+    // A menu closes the way any menu does: press anywhere else, press Escape, or change the
+    // layout under it. Capturing means the page still gets the press, so reaching for the
+    // paper both closes the menu and starts the stroke.
     document.addEventListener('pointerdown', (event) => this.onOutsidePress(event), {
       signal,
       capture: true,
     });
     document.addEventListener('keydown', (event) => this.onKeyDown(event), { signal });
-    window.addEventListener('resize', () => this.closePanel(), { signal });
+    window.addEventListener('resize', () => this.closeMenu(), { signal });
   }
 
   update(state: ToolbarState): void {
-    for (const [tool, button] of this.toolButtons) {
-      button.setAttribute('aria-pressed', String(tool === state.tool));
+    this.state = state;
+    const inHand = buttonFor(state.tool);
+    for (const [name, { button }] of this.entries()) {
+      button.setAttribute('aria-pressed', String(name === inHand));
     }
-    this.showSize(state);
+    this.lassoButton.setAttribute('aria-pressed', String(inHand === 'lasso'));
+    // A menu belongs to the tool in hand. When a key changes the tool, its menu goes too.
+    if (this.open && this.open !== inHand) this.closeMenu();
+
+    this.showSize(this.menus.pen, state.penWidth);
+    this.showSize(this.menus.eraser, state.eraserSize);
+    for (const [value, input] of this.swatches) input.checked = value === state.penColor;
+    for (const [tool, input] of this.eraserModes) input.checked = tool === state.eraser;
+    this.showEraser(state.eraser);
+
+    // The pen icon, the sample line and the eraser tip all read these.
+    this.element.style.setProperty('--pen-color', state.penColor);
+    this.element.style.setProperty('--pen-size', `${state.penWidth}px`);
+    this.element.style.setProperty('--eraser-size', `${state.eraserSize}px`);
+
     this.undoButton.disabled = !state.canUndo;
     this.redoButton.disabled = !state.canRedo;
     this.clearButton.disabled = !state.canClear;
@@ -140,80 +137,185 @@ export class Toolbar {
     this.element.remove();
   }
 
-  private showSize(state: ToolbarState): void {
-    this.sizing = state.tool === 'pen' ? 'pen' : 'eraser';
-    const erasing = this.sizing === 'eraser';
-    const range = erasing ? ERASER_SIZE : PEN_SIZE;
-    const size = erasing ? state.eraserSize : state.penWidth;
-    const name = erasing ? 'Eraser size' : 'Pen size';
+  // ------------------------------------------------------------------ the menus
+
+  private penMenu(): Menu {
+    const button = this.button(icons.pen, 'Pen', 'P', () => this.onPress('pen'));
+    button.classList.add('tool-pen');
+    button.title = 'Pen (P). Press again for its size and colour';
+    const size = this.sizeControl('Pen', PEN_SIZE, (width) => this.actions.setPenWidth(width));
+
+    // The sample is drawn at the true width and in the true colour: exactly what you get.
+    const preview = element('div', 'size-preview');
+    preview.innerHTML = penSample;
+
+    const colours = this.choices('swatches', 'Ink colour');
+    for (const ink of INKS) {
+      const swatch = element('label', 'swatch');
+      swatch.style.setProperty('--swatch', ink.value);
+      swatch.title = ink.name;
+      const input = this.radio('ink', ink.value, () => this.actions.setPenColor(ink.value));
+      input.setAttribute('aria-label', ink.name);
+      swatch.append(input);
+      colours.append(swatch);
+      this.swatches.set(ink.value, input);
+    }
+    return this.menu(button, 'Pen', size, [preview, size.slider, colours]);
+  }
+
+  private eraserMenu(): Menu {
+    const button = this.button('', 'Eraser', '', () => this.onPress('eraser'));
+    button.title = 'Eraser (E, R). Press again for its size and what it rubs out';
+    const size = this.sizeControl('Eraser', ERASER_SIZE, (s) => this.actions.setEraserSize(s));
+
+    // The tip at its true size, as it is drawn under the pointer on the page.
+    const preview = element('div', 'size-preview');
+    preview.append(element('span', 'eraser-tip'));
+
+    const modes = this.choices('eraser-modes', 'What it rubs out');
+    for (const { tool, label, shortcut, icon } of ERASERS) {
+      const option = element('label', 'eraser-mode');
+      option.title = `${label} (${shortcut})`;
+      option.innerHTML = `${icon}<span>${label}</span>`;
+      const input = this.radio('eraser', tool, () => this.actions.selectTool(tool));
+      option.prepend(input);
+      modes.append(option);
+      this.eraserModes.set(tool, input);
+    }
+    return this.menu(button, 'Eraser', size, [preview, size.slider, modes]);
+  }
+
+  private menu(
+    button: HTMLButtonElement,
+    name: string,
+    size: { head: HTMLElement; slider: HTMLInputElement; value: HTMLElement },
+    parts: HTMLElement[],
+  ): Menu {
+    button.setAttribute('aria-haspopup', 'dialog');
+    button.setAttribute('aria-expanded', 'false');
+    const panel = element('div', 'tool-menu');
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', name);
+    panel.hidden = true;
+    panel.append(size.head, ...parts);
+    return { button, panel, slider: size.slider, sizeValue: size.value };
+  }
+
+  /** A heading with the size in it, and the slider that sets it. */
+  private sizeControl(
+    name: string,
+    range: SizeRange,
+    onSlide: (size: number) => void,
+  ): { head: HTMLElement; slider: HTMLInputElement; value: HTMLElement } {
+    const title = element('span', 'size-name');
+    title.textContent = name;
+    const value = element('span', 'size-value');
+    const head = element('p', 'size-head');
+    head.append(title, value);
+
+    const slider = element('input', 'size-slider');
+    slider.type = 'range';
+    slider.min = String(range.min);
+    slider.max = String(range.max);
+    slider.step = String(range.step);
+    slider.setAttribute('aria-label', `${name} size`);
+    slider.addEventListener('input', () => onSlide(Number(slider.value)), {
+      signal: this.abort.signal,
+    });
+    return { head, slider, value };
+  }
+
+  private showSize(menu: Menu, size: number): void {
     const label = sizeLabel(size);
-
-    this.sizeSlider.min = String(range.min);
-    this.sizeSlider.max = String(range.max);
-    this.sizeSlider.step = String(range.step);
-    this.sizeSlider.value = String(size);
-    this.sizeSlider.setAttribute('aria-label', name);
-    this.sizeSlider.setAttribute('aria-valuetext', label);
-
-    this.sizeName.textContent = name;
-    this.sizeValue.textContent = label;
-    this.sizePanel.setAttribute('aria-label', name);
-    this.sizeButton.setAttribute('aria-label', `${name}: ${label}`);
-    this.sizeButton.title = `${name} ([ and ])`;
-
-    // Both dots, the one on the button and the true-size one in the panel, read these.
-    this.element.dataset.sizing = this.sizing;
-    this.element.style.setProperty('--size', `${size}px`);
+    menu.slider.value = String(size);
+    menu.slider.setAttribute('aria-valuetext', label);
+    menu.sizeValue.textContent = label;
   }
 
-  private onSlide(): void {
-    const size = Number(this.sizeSlider.value);
-    if (this.sizing === 'pen') this.actions.setPenWidth(size);
-    else this.actions.setEraserSize(size);
+  /**
+   * The eraser button always shows an eraser, whichever kind it picks up: the two kinds
+   * are told apart in its menu. Its label names the kind.
+   */
+  private showEraser(eraser: Eraser): void {
+    const button = this.menus.eraser.button;
+    if (button.dataset.eraser === eraser) return;
+    const { label } = ERASERS.find((e) => e.tool === eraser)!;
+    button.dataset.eraser = eraser;
+    button.innerHTML = icons.eraser;
+    button.setAttribute('aria-label', `Eraser: ${label.toLowerCase()}`);
   }
 
-  private get panelOpen(): boolean {
-    return !this.sizePanel.hidden;
+  private onPress(button: ToolButton): void {
+    if (!this.state) return;
+    const result = press(button, this.state.tool, this.state.eraser, this.open);
+    if ('select' in result) this.actions.selectTool(result.select);
+    else if (result.menu) this.openMenu(result.menu);
+    else this.closeMenu();
   }
 
-  private togglePanel(): void {
-    if (this.panelOpen) this.closePanel();
-    else this.openPanel();
-  }
-
-  private openPanel(): void {
-    this.sizePanel.hidden = false;
-    this.sizeButton.setAttribute('aria-expanded', 'true');
+  private openMenu(name: MenuName): void {
+    this.closeMenu();
+    const { button, panel, slider } = this.menus[name];
+    this.open = name;
+    panel.hidden = false;
+    button.setAttribute('aria-expanded', 'true');
 
     // Measured and placed in the same task as it is shown, so it never paints elsewhere.
     const at = placePanel(
-      this.sizeButton.getBoundingClientRect(),
+      button.getBoundingClientRect(),
       this.element.getBoundingClientRect(),
-      this.sizePanel.getBoundingClientRect(),
+      panel.getBoundingClientRect(),
       { width: window.innerWidth, height: window.innerHeight },
     );
-    this.sizePanel.style.left = `${at.left}px`;
-    this.sizePanel.style.top = `${at.top}px`;
-    this.sizeSlider.focus({ preventScroll: true }); // arrow keys adjust it straight away
+    panel.style.left = `${at.left}px`;
+    panel.style.top = `${at.top}px`;
+    slider.focus({ preventScroll: true });
   }
 
-  private closePanel(): void {
-    if (!this.panelOpen) return;
-    this.sizePanel.hidden = true;
-    this.sizeButton.setAttribute('aria-expanded', 'false');
+  private closeMenu(): void {
+    if (!this.open) return;
+    const { button, panel } = this.menus[this.open];
+    this.open = null;
+    panel.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
   }
 
   private onOutsidePress(event: PointerEvent): void {
-    if (!this.panelOpen || !(event.target instanceof Node)) return;
-    // A press on the button is left to its click handler, which closes the panel itself.
-    if (this.sizePanel.contains(event.target) || this.sizeButton.contains(event.target)) return;
-    this.closePanel();
+    if (!this.open || !(event.target instanceof Node)) return;
+    const { button, panel } = this.menus[this.open];
+    // A press on the menu's own button is left to its click handler, which closes it.
+    if (panel.contains(event.target) || button.contains(event.target)) return;
+    this.closeMenu();
   }
 
   private onKeyDown(event: KeyboardEvent): void {
-    if (event.key !== 'Escape' || !this.panelOpen) return;
-    this.closePanel();
-    this.sizeButton.focus({ preventScroll: true });
+    if (event.key !== 'Escape' || !this.open) return;
+    const { button } = this.menus[this.open];
+    this.closeMenu();
+    button.focus({ preventScroll: true });
+  }
+
+  // ------------------------------------------------------------------- building
+
+  private entries(): Array<[MenuName, Menu]> {
+    return Object.entries(this.menus) as Array<[MenuName, Menu]>;
+  }
+
+  /** A row of radio buttons. Real ones, so the arrow keys move along it for free. */
+  private choices(className: string, label: string): HTMLElement {
+    const row = element('div', className);
+    row.setAttribute('role', 'radiogroup');
+    row.setAttribute('aria-label', label);
+    return row;
+  }
+
+  private radio(name: string, value: string, onChoose: () => void): HTMLInputElement {
+    const input = element('input', '');
+    input.type = 'radio';
+    input.name = name;
+    input.value = value;
+    input.addEventListener('change', onChoose, { signal: this.abort.signal });
+    return input;
   }
 
   private group(label: string): HTMLElement {

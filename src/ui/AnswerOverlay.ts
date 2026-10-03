@@ -1,6 +1,9 @@
 import type { Equation } from '../app/equations';
 import type { CanvasLayer } from '../canvas/CanvasLayer';
+import type { Drag } from '../canvas/InkCanvas';
 import type { Bounds } from '../ink';
+import type { Line } from '../layout';
+import type { Reading } from '../recognition/interpret';
 
 /** Pencil graphite, as `r, g, b` for use with varying opacity. */
 const GRAPHITE = '74, 78, 87';
@@ -12,9 +15,6 @@ const font = (size: number): string => FONT.replace('{size}', String(size));
 export const LOW_CONFIDENCE = 0.6;
 /** How long an answer takes to be pencilled in. */
 const WRITE_MS = 260;
-/** The "?" after a doubtful answer: its size and the gap before it, relative to the answer. */
-const MARK_SCALE = 0.55;
-const MARK_GAP = 0.12;
 
 interface Shown {
   text: string;
@@ -23,15 +23,14 @@ interface Shown {
 }
 
 /**
- * What to pencil in after the "=", or null when there is nothing to say yet.
- * Malformed expressions get a question mark; the detail goes in a note below the line.
- * A bare "=" with nothing before it is not an error, just a line not yet written.
+ * What to pencil in after the "=", or null when there is nothing to write there: the
+ * line is not finished, or it does not make sense, in which case a note below it says
+ * why and the place for the answer stays empty.
  */
 export function answerText(equation: Equation): string | null {
   const { evaluation } = equation;
-  if (!evaluation) return null;
-  if (evaluation.status !== 'error') return evaluation.text;
-  return evaluation.error.code === 'empty' ? null : '?';
+  if (!evaluation || evaluation.status === 'error') return null;
+  return evaluation.text;
 }
 
 /**
@@ -44,24 +43,52 @@ export function answerOpacity(confidence: number): number {
 }
 
 /**
+ * Whether a drag carries the whole of an equation. One the lasso took only part of keeps
+ * its answer where it is until it is read again.
+ */
+export function isDragged(equation: Equation, drag: Drag): boolean {
+  return equation.line.symbols.every((symbol) =>
+    symbol.strokes.every((stroke) => drag.ids.has(stroke.id)),
+  );
+}
+
+/**
  * Draws everything the notebook writes back onto the page: answers, doubts and errors.
  *
  * The rule of the interface is that ink is the user's and pencil is the machine's, so
- * all of it is graphite. Nothing here runs unless an equation changes or an answer is
- * mid-animation; there is no standing render loop.
+ * all of it is graphite. Doubt is shown the way a careful reader would mark it, without
+ * a word: the answer is written more faintly, and the symbol it was unsure of gets a
+ * dotted line beneath it.
+ *
+ * Nothing here runs unless an equation changes or an answer is mid-animation; there is
+ * no standing render loop.
  */
 export class AnswerOverlay {
   private equations: readonly Equation[] = [];
   private readonly shown = new Map<number, Shown>();
   private frame = 0;
   private readonly reducedMotion: boolean;
+  /** Strokes the lasso is dragging. What is written for them is drawn moved with them. */
+  private drag: Drag | null = null;
 
   constructor(private readonly layer: CanvasLayer) {
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
 
+  /**
+   * While the lasso drags a sum, its answer goes with it. Once the sum is dropped, the
+   * answer stays at the new place until the moved strokes have been read again and the
+   * fresh answer takes over, so it never jumps back for a moment.
+   */
+  setDrag(drag: Drag | null): void {
+    this.drag = drag;
+    this.requestDraw();
+  }
+
   setEquations(equations: readonly Equation[]): void {
     this.equations = equations;
+    // These were read from the page after the drop, from the moved strokes themselves.
+    if (this.drag?.dropped) this.drag = null;
     const now = performance.now();
 
     const present = new Set<number>();
@@ -103,14 +130,28 @@ export class AnswerOverlay {
     let animating = false;
 
     for (const equation of this.equations) {
+      // A line written at an angle was turned level to be read, and its geometry is in
+      // that level frame. Turning the canvas the same way puts everything written back
+      // onto it along the line: the answer carries on in the direction of the writing.
+      const { tilt } = equation.line;
+      ctx.save();
+      if (this.drag && isDragged(equation, this.drag)) ctx.translate(this.drag.dx, this.drag.dy);
+      if (tilt) {
+        ctx.translate(tilt.pivotX, tilt.pivotY);
+        ctx.rotate(tilt.angle);
+        ctx.translate(-tilt.pivotX, -tilt.pivotY);
+      }
+
       this.drawDoubts(ctx, equation);
+      this.drawErrorNote(ctx, equation);
 
       const shown = this.shown.get(equation.id);
-      if (!shown) continue;
-      const progress = this.reducedMotion ? 1 : Math.min(1, (now - shown.since) / WRITE_MS);
-      if (progress < 1) animating = true;
-      this.drawAnswer(ctx, equation, shown.text, progress);
-      this.drawErrorNote(ctx, equation);
+      if (shown) {
+        const progress = this.reducedMotion ? 1 : Math.min(1, (now - shown.since) / WRITE_MS);
+        if (progress < 1) animating = true;
+        this.drawAnswer(ctx, equation, shown.text, progress);
+      }
+      ctx.restore();
     }
 
     if (animating) this.requestDraw();
@@ -133,97 +174,107 @@ export class AnswerOverlay {
 
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
+    ctx.font = font(size);
+    let width = ctx.measureText(text).width;
 
-    // A doubtful answer is followed by a small "?". It is part of what is written, so it
-    // counts towards the room the answer needs and towards what the animation reveals.
-    const doubtful = isNumber && equation.confidence < LOW_CONFIDENCE;
-    const measure = (): { width: number; extent: number } => {
-      let mark = 0;
-      if (doubtful) {
-        ctx.font = font(size * MARK_SCALE);
-        mark = size * MARK_GAP + ctx.measureText('?').width;
+    if (line.column) {
+      // Under the rule, where the answer of a column sum is written, with its last digit
+      // under the last digits of the rows above.
+      const right = Math.max(...line.column.rows.map((row) => row.bounds.maxX));
+      x = Math.max(8, Math.min(right - width, this.layer.width - width - 10));
+      y = line.column.rule.bounds.maxY + line.height * 0.2 + size / 2;
+    } else {
+      // Running off the right edge: first write smaller, then drop below the line.
+      const room = this.layer.width - x - 10;
+      if (width > room) {
+        const fitted = Math.max(size * 0.55, (size * room) / width);
+        if ((width * fitted) / size <= room) {
+          size = fitted;
+        } else {
+          size *= 0.7;
+          x = Math.max(8, Math.min(x, this.layer.width - width * 0.7 - 10));
+          y = line.bounds.maxY + size * 0.75;
+        }
+        ctx.font = font(size);
+        width = ctx.measureText(text).width;
       }
-      ctx.font = font(size);
-      const width = ctx.measureText(text).width;
-      return { width, extent: width + mark };
-    };
-    let { width, extent } = measure();
-
-    // Running off the right edge: first write smaller, then drop below the line.
-    const room = this.layer.width - x - 10;
-    if (extent > room) {
-      const fitted = Math.max(size * 0.55, (size * room) / extent);
-      if ((extent * fitted) / size <= room) {
-        size = fitted;
-      } else {
-        size *= 0.7;
-        x = Math.max(8, Math.min(x, this.layer.width - extent * 0.7 - 10));
-        y = line.bounds.maxY + size * 0.75;
-      }
-      ({ width, extent } = measure());
     }
 
     ctx.save();
     // The write-on effect: reveal the text from left to right, easing out.
     const eased = 1 - (1 - progress) ** 3;
     ctx.beginPath();
-    ctx.rect(x - size * 0.2, y - size, (extent + size * 0.4) * eased, size * 2);
+    ctx.rect(x - size * 0.2, y - size, (width + size * 0.4) * eased, size * 2);
     ctx.clip();
 
+    // A doubtful answer is the same answer, written more faintly.
     ctx.fillStyle = `rgba(${GRAPHITE}, ${isNumber ? answerOpacity(equation.confidence) : 0.78})`;
     // Kalam's digits sit a little above the middle of its line box.
     ctx.fillText(text, x, y + size * 0.06);
-
-    if (doubtful) {
-      ctx.font = font(size * MARK_SCALE);
-      ctx.fillText('?', x + width + size * MARK_GAP, y - size * 0.18);
-    }
     ctx.restore();
   }
 
-  /** A dotted pencil underline, and what was read, beneath each doubtful symbol. */
+  /** A dotted pencil line under each symbol the notebook was unsure of. */
   private drawDoubts(ctx: CanvasRenderingContext2D, equation: Equation): void {
     const { line, readings } = equation;
-    const size = Math.max(13, line.height * 0.3);
+    if (!line.column) {
+      this.drawRowDoubts(ctx, line, readings, 0.14);
+      return;
+    }
+    // In a column the next row is directly underneath, so the line is kept close.
+    let first = 0;
+    for (const row of line.column.rows) {
+      this.drawRowDoubts(ctx, row, readings.slice(first, first + row.symbols.length), 0.07);
+      first += row.symbols.length;
+    }
+  }
 
-    line.symbols.forEach((symbol, index) => {
+  /** @param drop how far below the row the dotted lines go, in digit heights. */
+  private drawRowDoubts(
+    ctx: CanvasRenderingContext2D,
+    row: Line,
+    readings: readonly Reading[],
+    drop: number,
+  ): void {
+    const y = row.bounds.maxY + row.height * drop;
+
+    ctx.save();
+    ctx.strokeStyle = `rgba(${GRAPHITE}, 0.7)`;
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([1, 5]);
+
+    row.symbols.forEach((symbol, index) => {
       const reading = readings[index];
       if (!reading || reading.confidence >= LOW_CONFIDENCE) return;
 
-      const y = line.bounds.maxY + line.height * 0.14;
-      ctx.save();
-      ctx.strokeStyle = `rgba(${GRAPHITE}, 0.7)`;
-      ctx.lineWidth = 1.5;
-      ctx.lineCap = 'round';
-      ctx.setLineDash([1, 5]);
       ctx.beginPath();
       ctx.moveTo(symbol.bounds.minX - 2, y);
       ctx.lineTo(symbol.bounds.maxX + 2, y);
       ctx.stroke();
-
-      ctx.font = font(size);
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillStyle = `rgba(${GRAPHITE}, 0.75)`;
-      ctx.fillText(
-        `${reading.symbol === '-' ? '−' : reading.symbol}?`,
-        (symbol.bounds.minX + symbol.bounds.maxX) / 2,
-        y + 3,
-      );
-      ctx.restore();
     });
+    ctx.restore();
   }
 
   /** For a malformed line: a zigzag under the symbol at fault and a note saying why. */
   private drawErrorNote(ctx: CanvasRenderingContext2D, equation: Equation): void {
-    const { evaluation, line } = equation;
+    const { evaluation, line, sources } = equation;
     if (evaluation?.status !== 'error') return;
+    // A bare "=" with nothing before it is not a mistake, just a line not yet written.
+    if (evaluation.error.code === 'empty') return;
 
-    // The position is an index into the expression, which has one character per symbol.
-    // Past the end means "something is missing here", which is at the "=".
-    const index = Math.min(evaluation.error.position, line.symbols.length - 1);
+    // The position is an index into the expression. Past the end means "something is
+    // missing here", which is at the "=". On a line of writing each character is a
+    // symbol; for a column sum `sources` says which symbol each character came from.
+    const position = Math.min(
+      evaluation.error.position,
+      (sources?.length ?? line.symbols.length) - 1,
+    );
+    const index = Math.min(sources ? sources[position] : position, line.symbols.length - 1);
     const at: Bounds = line.symbols[index].bounds;
-    const y = line.bounds.maxY + line.height * 0.16;
+    // In a column the zigzag goes right under the symbol and the note under the rule.
+    const y = (line.column ? at.maxY : line.bounds.maxY) + line.height * 0.16;
+    const noteY = line.column ? line.bounds.maxY + line.height * 0.3 : y + 9;
 
     ctx.save();
     ctx.strokeStyle = `rgba(${GRAPHITE}, 0.8)`;
@@ -246,9 +297,12 @@ export class AnswerOverlay {
     ctx.fillStyle = `rgba(${GRAPHITE}, 0.8)`;
     const width = ctx.measureText(evaluation.error.message).width;
     // Keep the note on the page even when the fault is near the right edge.
-    const x = Math.max(8, Math.min(left, this.layer.width - width - 10));
+    const x = Math.max(
+      8,
+      Math.min(line.column ? line.bounds.minX : left, this.layer.width - width - 10),
+    );
     ctx.textAlign = 'left';
-    ctx.fillText(evaluation.error.message, x, y + 9);
+    ctx.fillText(evaluation.error.message, x, noteY);
     ctx.restore();
   }
 }

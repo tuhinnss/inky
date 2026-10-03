@@ -1,13 +1,15 @@
 import { InkCanvas, type Tool } from '../canvas/InkCanvas';
+import { PageStack } from '../canvas/PageStack';
 import { History, StrokeEdit, StrokeStore } from '../ink';
 import { RecognitionClient } from '../recognition/RecognitionClient';
 import { AnswerOverlay } from '../ui/AnswerOverlay';
+import { DEFAULT_INK, inkFor } from '../ui/inks';
+import type { Eraser } from '../ui/menus';
+import { SelectionBar } from '../ui/SelectionBar';
 import { ERASER_SIZE, PEN_SIZE, snapSize, stepSize } from '../ui/sizes';
 import { Toolbar } from '../ui/Toolbar';
 import type { Equation } from './equations';
 import { RecognitionPipeline, type PipelineStats } from './RecognitionPipeline';
-
-const INK_COLOR = '#1c2b6e';
 
 /** Composition root: builds every part of the app and connects them. */
 export class App {
@@ -18,9 +20,12 @@ export class App {
   equations: readonly Equation[] = [];
   stats: PipelineStats | undefined;
 
+  readonly pages: PageStack;
+
   private readonly notebook: HTMLElement;
   private readonly toolbar: Toolbar;
   private readonly notice: HTMLElement;
+  private readonly selectionBar: SelectionBar;
   private readonly recognition: RecognitionClient;
   private readonly pipeline: RecognitionPipeline;
   private readonly overlay: AnswerOverlay;
@@ -28,7 +33,10 @@ export class App {
   private noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
   private tool: Tool = 'pen';
+  /** The eraser the eraser button picks up: the one used last. */
+  private eraser: Eraser = 'stroke-eraser';
   private penWidth = PEN_SIZE.initial;
+  private penColor = DEFAULT_INK;
   /** Diameter of the eraser tip, shared by both erasers. */
   private eraserSize = ERASER_SIZE.initial;
 
@@ -39,6 +47,7 @@ export class App {
     this.toolbar = new Toolbar({
       selectTool: (tool) => this.setTool(tool),
       setPenWidth: (width) => this.setPenWidth(width),
+      setPenColor: (color) => this.setPenColor(color),
       setEraserSize: (size) => this.setEraserSize(size),
       undo: () => this.history.undo(),
       redo: () => this.history.redo(),
@@ -53,22 +62,30 @@ export class App {
     const page = document.createElement('main');
     page.className = 'page';
 
+    // Pages are whole squares of the grid the paper is ruled with.
+    const grid = parseFloat(getComputedStyle(root).getPropertyValue('--grid')) || 28;
+    this.pages = new PageStack(grid);
+
     const hint = document.createElement('p');
     hint.className = 'hint';
     hint.innerHTML = 'Write a sum, then finish it with =<small>18 + 4 × 3 =</small>';
+    this.pages.sheet(0).append(hint);
     this.notice = document.createElement('p');
     this.notice.className = 'notice';
     this.notice.setAttribute('role', 'status');
     this.notice.hidden = true;
-    page.append(hint, this.notice);
+    this.selectionBar = new SelectionBar(() => this.canvas.deleteSelection());
+    page.append(this.pages.element, this.notice, this.selectionBar.element);
 
     this.notebook.append(this.toolbar.element, page);
     root.append(this.notebook);
 
     this.canvas = new InkCanvas(page, this.store, this.history, {
-      inkColor: INK_COLOR,
+      inkColor: this.penColor,
       penWidth: this.penWidth,
       eraserRadius: this.eraserSize / 2,
+      isWritable: (at) => this.pages.isWritable(at),
+      scrollBy: (dy) => this.pages.scrollBy(dy),
     });
     this.canvas.setTool(this.tool);
 
@@ -90,7 +107,18 @@ export class App {
       this.store.subscribe(() => this.refresh()),
       this.history.subscribe(() => this.refresh()),
       this.canvas.onActivity((active) => this.pipeline.setPenDown(active)),
-      this.canvas.onResized(() => this.overlay.redraw()),
+      this.canvas.onViewChanged(() => {
+        this.overlay.redraw();
+        this.placeSelectionBar();
+      }),
+      this.canvas.onSelectionChanged(() => this.placeSelectionBar()),
+      this.canvas.onDrag((drag) => this.overlay.setDrag(drag)),
+      this.pages.onScroll((top) => {
+        this.canvas.setScroll(top);
+        // The margin is ruled too. Moving its ruling with the pages keeps the lines
+        // running on across the margin rule.
+        this.toolbar.element.style.backgroundPositionY = `${-top}px`;
+      }),
     );
 
     // Canvas text does not wait for web fonts. Answers drawn before Kalam has loaded
@@ -112,6 +140,8 @@ export class App {
     this.recognition.dispose();
     this.overlay.destroy();
     this.canvas.destroy();
+    this.selectionBar.destroy();
+    this.pages.destroy();
     this.toolbar.destroy();
     this.notebook.remove();
   }
@@ -131,13 +161,26 @@ export class App {
 
   private setTool(tool: Tool): void {
     this.tool = tool;
+    if (tool === 'stroke-eraser' || tool === 'pixel-eraser') this.eraser = tool;
     this.canvas.setTool(tool);
     this.refresh();
+  }
+
+  /** Puts the Delete button beside what the lasso holds, or hides it. */
+  private placeSelectionBar(): void {
+    this.selectionBar.show(this.canvas.selectedBox, this.pages.scrollTop, this.canvas.size);
   }
 
   private setPenWidth(width: number): void {
     this.penWidth = snapSize(PEN_SIZE, width);
     this.canvas.setPenWidth(this.penWidth);
+    this.refresh();
+  }
+
+  /** Changes the colour of the strokes still to be written. Those on the page keep theirs. */
+  private setPenColor(color: string): void {
+    this.penColor = inkFor(color).value;
+    this.canvas.setInkColor(this.penColor);
     this.refresh();
   }
 
@@ -147,22 +190,31 @@ export class App {
     this.refresh();
   }
 
-  /** Makes the tool in hand a number of steps thicker or thinner. */
+  /** Makes the tool in hand a number of steps thicker or thinner. The lasso has no size. */
   private nudgeSize(steps: number): void {
     if (this.tool === 'pen') this.setPenWidth(stepSize(PEN_SIZE, this.penWidth, steps));
-    else this.setEraserSize(stepSize(ERASER_SIZE, this.eraserSize, steps));
+    else if (this.tool !== 'lasso') {
+      this.setEraserSize(stepSize(ERASER_SIZE, this.eraserSize, steps));
+    }
   }
 
-  /** Clearing is an ordinary undoable edit, so it needs no "are you sure?" dialog. */
+  /**
+   * Clearing is an ordinary undoable edit, so it needs no "are you sure?" dialog. The
+   * pages go with the writing; undoing brings back as many as the writing needs.
+   */
   private clear(): void {
     if (this.store.size > 0) this.history.execute(new StrokeEdit([...this.store.all()], []));
+    this.pages.trim();
   }
 
   private refresh(): void {
     this.notebook.dataset.empty = String(this.store.size === 0);
+    this.pages.setInk(this.store.all());
     this.toolbar.update({
       tool: this.tool,
+      eraser: this.eraser,
       penWidth: this.penWidth,
+      penColor: this.penColor,
       eraserSize: this.eraserSize,
       canUndo: this.history.canUndo,
       canRedo: this.history.canRedo,
@@ -190,7 +242,11 @@ export class App {
     if (key === 'p') this.setTool('pen');
     else if (key === 'e') this.setTool('stroke-eraser');
     else if (key === 'r') this.setTool('pixel-eraser');
+    else if (key === 'l') this.setTool('lasso');
     else if (key === '[') this.nudgeSize(-1);
     else if (key === ']') this.nudgeSize(1);
+    else if (key === 'delete' || key === 'backspace') {
+      if (this.canvas.deleteSelection()) event.preventDefault();
+    } else if (key === 'escape') this.canvas.clearSelection();
   }
 }

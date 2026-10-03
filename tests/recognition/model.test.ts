@@ -1,14 +1,18 @@
 /**
- * End-to-end check of the recognition path with the real model: vector strokes are
- * rasterised by our code and classified by the bundled ONNX file, under the same WASM
- * runtime the browser uses. If the rasteriser drifted away from what the model was
- * trained on, this is where it would show.
+ * End-to-end check of the recognition path with the real models: vector strokes are
+ * rasterised by our code and classified by the bundled ONNX files, under the same WASM
+ * runtime the browser uses and through the same function the worker calls. If the
+ * rasteriser drifted away from what a model was trained on, this is where it would show.
  */
 import { describe, expect, it } from 'vitest';
+import { readEquation } from '../../src/app/equations';
+import { createStroke, type Stroke } from '../../src/ink';
+import { layoutPage } from '../../src/layout';
 import { MODEL_SYMBOLS } from '../../src/recognition/model';
 import { PEN_SIZE } from '../../src/ui/sizes';
-import { ink } from '../fixtures/ink';
-import { ascii, classify, rasterize } from './helpers';
+import { climbing, ink, strokesOf as strokesIn, turned } from '../fixtures/ink';
+import { REAL_DIGITS, type RealDigit } from '../fixtures/realDigits';
+import { ascii, classify, classifyAlone, rasterize } from './helpers';
 
 const ALL = MODEL_SYMBOLS.join('');
 
@@ -72,5 +76,103 @@ describe('bundled model on our rasteriser', () => {
       expect(probabilities).toHaveLength(MODEL_SYMBOLS.length);
       expect(probabilities.reduce((sum, p) => sum + p, 0)).toBeCloseTo(1, 4);
     }
+  });
+});
+
+describe('the digit helpers', () => {
+  /** A real digit as strokes, written at the given height. */
+  const strokesOf = ({ strokes }: RealDigit, size = 80): Stroke[] =>
+    strokes.map((flat) => {
+      const points = [];
+      for (let i = 0; i + 1 < flat.length; i += 2) {
+        points.push({ x: (flat[i] * size) / 80, y: (flat[i + 1] * size) / 80, pressure: 0.5 });
+      }
+      return createStroke(points, 4, '#000');
+    });
+
+  it.each(REAL_DIGITS.map((real) => [real.digit, real.aloneReads, real] as const))(
+    'read a real "%s" that the main model alone takes for "%s"',
+    async (digit, aloneReads, real) => {
+      const [alone] = await classifyAlone([strokesOf(real)]);
+      const [voted] = await classify([strokesOf(real)]);
+      expect(alone.symbol).toBe(aloneReads); // the fixture still shows what it is meant to
+      expect(voted.symbol).toBe(digit);
+    },
+  );
+
+  it('read the one-stroke 4 at any handwriting size', async () => {
+    const four = REAL_DIGITS.find((real) => real.digit === '4')!;
+    const predictions = await classify([24, 40, 80, 160, 320].map((size) => strokesOf(four, size)));
+    expect(predictions.map((prediction) => prediction.symbol)).toEqual(['4', '4', '4', '4', '4']);
+  });
+
+  it('leave an operator exactly as the main model read it', async () => {
+    const written = ink('+÷=×-', { size: 80, wobble: 0 }).map((symbol) => symbol.strokes);
+    const alone = await classifyAlone(written);
+    const voted = await classify(written);
+    voted.forEach((prediction, i) => {
+      expect(prediction.symbol).toBe(alone[i].symbol);
+      // The operator probabilities are untouched: not one bit of them changes.
+      for (let c = 10; c < MODEL_SYMBOLS.length; c++) {
+        expect(prediction.probabilities[c]).toBe(alone[i].probabilities[c]);
+      }
+    });
+  });
+
+  it('never change how likely a symbol is to be a digit at all', async () => {
+    const written = ink('4+9=', { size: 80, wobble: 0.03, seed: 4 }).map((s) => s.strokes);
+    const alone = await classifyAlone(written);
+    const voted = await classify(written);
+    const digits = (p: Float32Array): number => p.subarray(0, 10).reduce((sum, v) => sum + v, 0);
+    voted.forEach((prediction, i) => {
+      expect(digits(prediction.probabilities)).toBeCloseTo(digits(alone[i].probabilities), 5);
+    });
+  });
+
+  it('give the same answers for a batch as for its symbols one at a time', async () => {
+    const batch = REAL_DIGITS.slice(0, 4).map((real) => strokesOf(real));
+    const together = await classify(batch);
+    for (const [i, strokes] of batch.entries()) {
+      const [single] = await classify([strokes]);
+      expect(single.symbol).toBe(together[i].symbol);
+      expect(single.confidence).toBeCloseTo(together[i].confidence, 4);
+    }
+  });
+});
+
+describe('lines that are not horizontal', () => {
+  /** Lays a page out, classifies it with the real models and reads each line. */
+  async function read(strokes: Stroke[]): Promise<string[]> {
+    const lines = layoutPage(strokes);
+    const shapes = lines.flatMap((line) =>
+      line.symbols.filter((symbol) => symbol.kind === 'shape'),
+    );
+    const predictions = await classify(shapes.map((symbol) => symbol.strokes));
+    const cache = new Map(shapes.map((symbol, i) => [symbol.key, predictions[i].probabilities]));
+    return lines.map((line, id) => {
+      const { expression, evaluation } = readEquation({ id, version: 1, line }, cache);
+      return `${expression} ${evaluation && evaluation.status !== 'error' ? evaluation.text : '-'}`;
+    });
+  }
+  const written = (text: string, seed = 1) => ink(text, { x: 100, y: 400, size: 70, seed });
+
+  // Turned this far, a "+" is on its way to being a "×" and the bars of "=" are no
+  // longer flat. Before lines were turned level, none of these were read.
+  it.each([20, 30, -20, -30])('reads a line turned by %i°', async (degrees) => {
+    expect(await read(turned(written('18+4×3='), degrees))).toEqual(['18+4×3= 30']);
+  });
+
+  it.each([25, -25])('reads decimals and division on a line turned by %i°', async (degrees) => {
+    expect(await read(turned(written('7.5÷2-60=', 3), degrees))).toEqual(['7.5÷2-60= −56.25']);
+  });
+
+  it.each([25, -25])('reads a line climbing at %i°, its symbols upright', async (degrees) => {
+    expect(await read(climbing(written('18+4×3='), degrees))).toEqual(['18+4×3= 30']);
+  });
+
+  it('reads a turned line and a level one on the same page', async () => {
+    const level = strokesIn(ink('96-27=', { x: 100, y: 40, size: 70, seed: 4 }));
+    const askew = turned(ink('12×12=', { x: 100, y: 560, size: 70, seed: 5 }), 25);
+    expect((await read([...level, ...askew])).sort()).toEqual(['12×12= 144', '96-27= 69']);
   });
 });

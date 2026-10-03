@@ -2,7 +2,8 @@
  * Coordinate spaces, and the conversions between them.
  *
  *   client  CSS pixels from the top-left of the viewport. What pointer events report.
- *   page    CSS pixels from the top-left of the canvas. What strokes are stored in.
+ *   page    CSS pixels from the top-left of the first page. What strokes are stored in.
+ *           The pages are stacked down one surface, so later pages have larger `y`.
  *   device  Physical pixels of the canvas backing store. What the 2D context fills.
  *
  * Strokes live in page space so that a stroke means the same thing on every screen. Only
@@ -71,7 +72,10 @@ export function drawScale(cssSize: Size, backingSize: Size): Position {
   };
 }
 
-/** Pointer event coordinates to page space. `origin` is the canvas's bounding rect. */
+/**
+ * Pointer event coordinates to the canvas's own space. `origin` is the canvas's bounding
+ * rect. The pages may be scrolled; adding the scroll offset gives page space.
+ */
 export function clientToPage(
   clientX: number,
   clientY: number,

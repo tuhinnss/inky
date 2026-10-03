@@ -5,6 +5,7 @@
 import type { Line } from '../layout';
 import { evaluate, EQUALS, type Evaluation } from '../math';
 import { interpret, type Reading } from '../recognition/interpret';
+import { assembleColumn } from './columnSum';
 
 /** Model output per symbol, keyed by `SymbolGroup.key`. */
 export type ProbabilityCache = ReadonlyMap<string, ArrayLike<number>>;
@@ -15,10 +16,19 @@ export interface Equation {
   /** Increases every time the line's ink changes. */
   version: number;
   line: Line;
-  /** One per symbol, left to right. */
+  /** One per symbol, in the order of `line.symbols`. */
   readings: Reading[];
-  /** What was read, one character per symbol: "18+4×3=". */
+  /**
+   * What was read: "18+4×3=". For a line of writing it has one character per symbol.
+   * A column sum is written out on one line, which can add characters; `sources` then
+   * says where each came from.
+   */
   expression: string;
+  /**
+   * Column sums only: for each character of `expression`, the index of the symbol it
+   * came from. Absent for a line of writing, where character n is simply symbol n.
+   */
+  sources?: number[];
   /** Null until the line ends with "=": there is nothing to answer yet. */
   evaluation: Evaluation | null;
   /** The weakest reading on the line. An answer is only as sure as its least sure symbol. */
@@ -33,17 +43,39 @@ export interface TrackedLine {
 
 /** True when every symbol that needs the model has a cached result. */
 export function isReadable(line: Line, cache: ProbabilityCache): boolean {
-  return line.symbols.every((symbol) => symbol.kind === 'dot' || cache.has(symbol.key));
+  return line.symbols.every((symbol) => symbol.kind !== 'shape' || cache.has(symbol.key));
+}
+
+/** Reads each symbol and writes the line out as an expression. */
+function readLine(
+  line: Line,
+  cache: ProbabilityCache,
+): Pick<Equation, 'readings' | 'expression' | 'sources'> {
+  if (!line.column) {
+    const readings = line.symbols.map((symbol) => interpret(symbol, line, cache.get(symbol.key)));
+    return { readings, expression: readings.map((reading) => reading.symbol).join('') };
+  }
+
+  // Each row is read as the line of writing it is, so that a decimal point is judged
+  // against its own row and not against the whole column.
+  const rows = line.column.rows.map((row) =>
+    row.symbols.map((symbol) => interpret(symbol, row, cache.get(symbol.key))),
+  );
+  // The rule is what it is by position alone. It stands for the "=".
+  const rule: Reading = { symbol: EQUALS, confidence: 1 };
+  return {
+    readings: [...rows.flat(), rule],
+    ...assembleColumn(rows.map((row) => row.map((reading) => reading.symbol))),
+  };
 }
 
 /**
  * Reads and evaluates one line. The expression is evaluated only when it ends in "=",
- * which is how the writer says "I am done, work this out".
+ * which is how the writer says "I am done, work this out". Under a column sum the rule
+ * says the same thing.
  */
 export function readEquation(tracked: TrackedLine, cache: ProbabilityCache): Equation {
-  const { line } = tracked;
-  const readings = line.symbols.map((symbol) => interpret(symbol, line, cache.get(symbol.key)));
-  const expression = readings.map((reading) => reading.symbol).join('');
+  const { readings, expression, sources } = readLine(tracked.line, cache);
 
   let evaluation: Evaluation | null = null;
   if (expression.endsWith(EQUALS)) {
@@ -67,6 +99,7 @@ export function readEquation(tracked: TrackedLine, cache: ProbabilityCache): Equ
     ...tracked,
     readings,
     expression,
+    ...(sources ? { sources } : {}),
     evaluation,
     confidence: readings.reduce((lowest, reading) => Math.min(lowest, reading.confidence), 1),
   };

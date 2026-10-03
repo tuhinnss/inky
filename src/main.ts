@@ -25,8 +25,21 @@ registerSW({
   onOfflineReady: () => app.showNotice('Saved to this device. CalcInk now works offline.', 6000),
 });
 
+// "Report a misread" is a development aid for collecting real handwriting. Both
+// conditions are constants at build time, so in the production build this whole branch,
+// and the module it would load, are removed.
+let removeCapture = (): void => {};
+if (import.meta.env.DEV || import.meta.env.MODE === 'capture') {
+  void import('./dev/capture').then(({ installCapture }) => {
+    removeCapture = installCapture(app);
+  });
+}
+
 // During development Vite swaps this module in place. Tearing the old instance down
 // first is also a standing check that destroy() really does release everything.
 if (import.meta.hot) {
-  import.meta.hot.dispose(() => app.destroy());
+  import.meta.hot.dispose(() => {
+    removeCapture();
+    app.destroy();
+  });
 }

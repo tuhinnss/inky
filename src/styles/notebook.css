@@ -1,23 +1,28 @@
 /* ------------------------------------------------------------------ the sheet */
 
 .notebook {
+  /* The ruling is a CSS background, not canvas drawing: it costs nothing per frame and
+     stays sharp at every device pixel ratio. The margin and every page are ruled alike. */
+  --ruling:
+    linear-gradient(to right, var(--rule) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--rule) 1px, transparent 1px);
+
   display: grid;
   grid-template-columns: var(--margin-width) minmax(0, 1fr);
   height: 100%;
   padding-left: env(safe-area-inset-left);
-
-  /* The ruling is a CSS background, not canvas drawing: it costs nothing per frame and
-     stays sharp at every device pixel ratio. */
   background-color: var(--paper);
-  background-image:
-    linear-gradient(to right, var(--rule) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--rule) 1px, transparent 1px);
+  background-image: var(--ruling);
   background-size: var(--grid) var(--grid);
 }
 
 /* ----------------------------------------------------------------- the margin */
 
 .toolbar {
+  /* Its own ruling, which App.ts moves with the pages as they scroll. */
+  background-color: var(--paper);
+  background-image: var(--ruling);
+  background-size: var(--grid) var(--grid);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -87,52 +92,39 @@
   cursor: default;
 }
 
-/* --------------------------------------------------------------- the tool size */
+/* -------------------------------------------------------------- the tool menus */
 
-/* The size of the tool in hand, drawn as the mark it makes: a blot of ink for the pen,
-   the outline of the tip for the eraser. `--size` is set on the toolbar in CSS pixels. */
-.size-dot {
-  display: block;
-  width: var(--size);
-  height: var(--size);
-  border-radius: 50%;
-  background: var(--ink);
+/* The pen is drawn in the colour it writes in. `--pen-color`, `--pen-size` and
+   `--eraser-size` are set on the toolbar by Toolbar.ts. */
+.tool-pen svg {
+  color: var(--pen-color);
 }
 
-.toolbar[data-sizing='eraser'] .size-dot {
-  border: 1.25px solid rgb(200 80 105 / 90%);
-  background: rgb(232 121 140 / 14%);
+/* A small corner on the tool in hand says that pressing it again opens its menu. */
+.tool[aria-haspopup]::after {
+  content: '';
+  position: absolute;
+  right: 6px;
+  bottom: 8px;
+  border: 3px solid transparent;
+  border-right-color: currentColor;
+  border-bottom-color: currentColor;
+  opacity: 0;
+  transition: opacity 140ms ease-out;
 }
 
-/* On the button the dot is a reminder, not a measurement: large sizes stop at the edge. */
-.tool-size .size-dot {
-  width: min(var(--size), 30px);
-  height: min(var(--size), 30px);
-}
-
-/* In the panel the pen is shown as a line of ink, which says more than a dot does. */
-.size-stroke {
-  display: none;
-  stroke: var(--ink);
-  stroke-width: var(--size);
-}
-
-.toolbar[data-sizing='pen'] .size-stroke {
-  display: block;
-}
-
-.toolbar[data-sizing='pen'] .size-preview .size-dot {
-  display: none;
+.tool[aria-haspopup][aria-pressed='true']::after {
+  opacity: 0.55;
 }
 
 /* A slip of paper beside the margin. Fixed, so the scrolling toolbar cannot clip it;
    Toolbar.ts sets left and top each time it opens. */
-.size-panel {
+.tool-menu {
   position: fixed;
   z-index: 10;
   display: grid;
   gap: 4px;
-  width: 204px;
+  width: 232px;
   padding: 10px 14px 14px;
   border: 1.5px solid color-mix(in srgb, var(--graphite) 45%, transparent);
   border-radius: 3px 7px 4px 8px;
@@ -145,8 +137,111 @@
   color: var(--graphite);
 }
 
-.size-panel[hidden] {
+.tool-menu[hidden] {
   display: none;
+}
+
+/* The pen's sample is a line of ink at the true width, in the true colour. */
+.size-stroke {
+  display: block;
+  stroke: var(--pen-color);
+  stroke-width: var(--pen-size);
+}
+
+/* The eraser's is the tip itself, drawn as it is drawn on the page. */
+.eraser-tip {
+  display: block;
+  width: var(--eraser-size);
+  height: var(--eraser-size);
+  border: 1.25px solid rgb(200 80 105 / 90%);
+  border-radius: 50%;
+  background: rgb(232 121 140 / 14%);
+}
+
+/* The radio buttons are real and keep working with the keyboard, but are not seen: the
+   swatch or the label around each one is what shows. */
+.swatch input,
+.eraser-mode input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  justify-items: center;
+  margin-top: 10px;
+}
+
+.swatch {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--swatch);
+  cursor: pointer;
+}
+
+/* The chosen colour gets a ring, the way a selected pen is circled on a sheet of swatches. */
+.swatch:has(:checked) {
+  box-shadow:
+    0 0 0 2px var(--paper),
+    0 0 0 4px var(--swatch);
+}
+
+.swatch:has(:focus-visible) {
+  outline: 2px solid var(--ink);
+  outline-offset: 6px;
+}
+
+.eraser-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.eraser-mode {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 6px 4px 5px;
+  font-size: 16px;
+  line-height: 1.1;
+  text-align: center;
+  cursor: pointer;
+}
+
+.eraser-mode > svg,
+.eraser-mode > span {
+  position: relative; /* above the highlighter swipe */
+}
+
+/* The chosen one is marked like the tool in hand: a swipe of highlighter. */
+.eraser-mode::before {
+  content: '';
+  position: absolute;
+  inset: 4px 2px;
+  border-radius: 3px 5px 4px 6px;
+  background: var(--highlighter);
+  mix-blend-mode: multiply;
+  transform: rotate(-3deg) scaleX(0);
+  transform-origin: left center;
+  transition: transform 140ms ease-out;
+}
+
+.eraser-mode:has(:checked)::before {
+  transform: rotate(-3deg) scaleX(1);
+}
+
+.eraser-mode:has(:focus-visible) {
+  outline: 2px solid var(--ink);
+  outline-offset: -1px;
+  border-radius: 6px;
 }
 
 .size-head {
@@ -208,12 +303,166 @@
   cursor: none; /* the eraser tip is drawn on the canvas at its true size */
 }
 
+.page[data-tool='lasso'][data-grab='true'] {
+  cursor: move;
+}
+
+/* What can be done to the strokes the lasso holds, on a slip of paper beside them.
+   SelectionBar.ts places it with a transform. Above the canvases, so it is never inked over. */
+.selection-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  padding: 3px;
+  border: 1.5px solid color-mix(in srgb, var(--graphite) 45%, transparent);
+  border-radius: 3px 7px 4px 8px;
+  background: var(--paper);
+  box-shadow:
+    0 6px 16px rgb(28 43 110 / 14%),
+    0 1px 2px rgb(28 43 110 / 12%);
+}
+
+.selection-bar[hidden] {
+  display: none;
+}
+
+.selection-bar button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 12px 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  font-family: var(--hand);
+  font-weight: 300;
+  font-size: 18px;
+  color: var(--graphite);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.selection-bar button:hover {
+  background: color-mix(in srgb, var(--highlighter) 55%, transparent);
+}
+
+.selection-bar button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
 .layer {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ the pages */
+
+/* Sheets of paper down a desk. Only the paper scrolls; the canvases above it stay put and
+   redraw for each scroll position. Touch does not scroll it natively: one finger writes,
+   and InkCanvas.ts scrolls it for a drag with two. */
+.pages {
+  position: absolute;
+  inset: 0;
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  background: var(--desk);
+}
+
+.pages,
+.pages * {
+  touch-action: none;
+}
+
+.page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--page-gap);
+}
+
+.sheet {
+  position: relative;
+  flex: none;
+  height: var(--page-height, 100%);
+  background-color: var(--paper);
+  background-image: var(--ruling);
+  background-size: var(--grid) var(--grid);
+  box-shadow: 0 1px 3px rgb(28 43 110 / 12%);
+}
+
+.page-number {
+  position: absolute;
+  right: calc(var(--grid) / 2);
+  bottom: 6px;
+  font-family: var(--hand);
+  font-weight: 300;
+  font-size: 16px;
+  color: color-mix(in srgb, var(--graphite) 55%, transparent);
+  pointer-events: none;
+}
+
+/* Below the last page: a "+", and around it a ring that fills as you pull past the end. */
+.page-end {
+  display: grid;
+  flex: none;
+  place-content: center;
+  justify-items: center;
+  gap: 2px;
+  height: 168px;
+  font-family: var(--hand);
+  font-weight: 300;
+  font-size: 17px;
+  color: var(--graphite);
+}
+
+.add-page {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.add-page:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.add-ring {
+  stroke: color-mix(in srgb, var(--graphite) 40%, transparent);
+  stroke-width: 1.5;
+}
+
+.add-ring-fill {
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-dashoffset: calc(157.08px * (1 - var(--pull, 0)));
+  transition: stroke-dashoffset 120ms ease-out;
+}
+
+.add-plus {
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.page-end[data-blank='true'] {
+  color: color-mix(in srgb, var(--graphite) 55%, transparent);
+}
+
+.page-end[data-blank='true'] .add-page {
+  cursor: default;
 }
 
 .hint {
