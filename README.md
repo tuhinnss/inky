@@ -145,6 +145,7 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 | `npm run format`         | Format the source with Prettier                                                                      |
 | `npm run capture`        | Serve a build that can save handwriting (below)                                                      |
 | `npm run eval:digits`    | Measure recognition on real pen-written digits ([scripts/eval](scripts/eval/README.md))              |
+| `npm run coverage`       | Run the tests and report which lines of `src/` they reach (HTML in `coverage/`)                      |
 | `npm run eval:operators` | Measure operators and whole expressions on real handwriting ([scripts/eval](scripts/eval/README.md)) |
 
 ### Collecting real handwriting

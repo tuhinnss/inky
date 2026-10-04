@@ -1068,6 +1068,27 @@ and wobble, so tests are exact and repeatable. And the model integration tests r
 model** under the same WASM runtime the browser uses, so a change to the rasteriser that degraded
 recognition would fail the build.
 
+**Coverage.** `npm run coverage` measures which lines of `src/` the tests run, counting every
+source file, including those no test reaches. Overall it is 61% of lines, and the number splits
+cleanly in two:
+
+| Part of `src/`                                                                                              | Lines covered |
+| ----------------------------------------------------------------------------------------------------------- | ------------- |
+| Math engine (`math/`)                                                                                       | 99%           |
+| Layout (`layout/`)                                                                                          | 100%          |
+| Ink, erasers, scratch-out, undo (`ink/`)                                                                    | 100%          |
+| Reading symbols (`recognition/`, without the worker and client)                                             | 91% to 100%   |
+| From lines to answers (`app/`, without `App.ts`)                                                            | 94% to 100%   |
+| Pure interface logic (menus, sizes, inks, readings, answer layout)                                          | 81% to 100%   |
+| Browser glue: canvases, toolbar, selection bar, page stack, `App.ts`, the worker, the dev-only capture page | 0% to 32%     |
+
+Everything that decides what the notebook reads and answers is covered. What is not is the code
+that only connects it to the browser: pointer events, canvases, the DOM and the worker. Node has
+none of those, so those files are checked by driving the built app in a real browser (Edge,
+through `playwright-core`) with synthetic pen strokes. Those scripts are not in the repository,
+because `playwright-core` is larger than the project allows a dependency to be without a decision
+to take it.
+
 ## 10. Limitations
 
 - **About one real digit in thirty is misread.** On pen-written digits from people the models

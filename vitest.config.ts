@@ -6,5 +6,11 @@ export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
     environment: 'node',
+    // `npm run coverage`: every source file counts, those no test reaches included.
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      reporter: ['text', 'html'],
+    },
   },
 });
