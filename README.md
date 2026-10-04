@@ -73,7 +73,9 @@ Press a tool once to pick it up, and press it again for its menu. The pen's menu
 from 1.5 to 12 px, and its colour, from six inks. The eraser's menu sets the size of its tip, from
 8 to 80 px, and whether it rubs out whole strokes or only the part it passes over. Both show the
 size you are choosing at its true size. The eraser end of a stylus erases without changing tool,
-and a hand resting on the screen while you write with a stylus is ignored.
+and a hand resting on the screen while you write with a stylus is ignored. You can also erase
+without the eraser: scribble back and forth over something with the pen, five times or more, and
+it is rubbed out. Undo brings it back.
 
 With the lasso, draw a loop round some writing to select it. Drag the selection to move it, its
 answer with it, or press Delete. Tap elsewhere to let it go.
@@ -137,7 +139,7 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 | `npm run dev`            | Start the dev server                                                                                 |
 | `npm run build`          | Type-check, then build to `dist/`                                                                    |
 | `npm run preview`        | Serve the production build locally                                                                   |
-| `npm test`               | Run the 714 unit and integration tests once                                                          |
+| `npm test`               | Run the 725 unit and integration tests once                                                          |
 | `npm run typecheck`      | Type-check without building                                                                          |
 | `npm run lint`           | Lint the source. Fails on `eval` or `new Function`                                                   |
 | `npm run format`         | Format the source with Prettier                                                                      |

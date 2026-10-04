@@ -5,7 +5,9 @@ import {
   eraseFromStroke,
   inBox,
   inkBounds,
+  isScribble,
   moveStrokes,
+  scratchedOut,
   selectWithLasso,
   selectionBounds,
   strokeIsHit,
@@ -530,7 +532,15 @@ export class InkCanvas {
     if (tapped && this.onTap(gesture.start)) commit = false;
 
     if (gesture.tool === 'pen') {
-      if (commit && gesture.points.length > 0) {
+      // Scribbling over writing rubs it out, and the scribble goes with it. One undo
+      // brings the writing back.
+      const scratched =
+        commit && isScribble(gesture.points)
+          ? scratchedOut(gesture.points, this.penWidth, this.store.all())
+          : [];
+      if (scratched.length > 0) {
+        this.history.execute(new StrokeEdit(scratched, []));
+      } else if (commit && gesture.points.length > 0) {
         const stroke = createStroke(
           gesture.points,
           this.penWidth,

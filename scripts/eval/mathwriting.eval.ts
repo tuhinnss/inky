@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { readEquation } from '../../src/app/equations';
+import { isScribble } from '../../src/ink';
 import { layoutPage, segmentLine, type SymbolGroup } from '../../src/layout';
 import { interpret } from '../../src/recognition/interpret';
 import { classify } from '../../tests/recognition/helpers';
@@ -274,6 +275,14 @@ describe.skipIf(!existsSync(FILE))(
         `    read exactly right: ${xExact}/${usable.length} = ${pct(xExact, usable.length)}`,
         `    each x read as x, in those grouped right: ${xRead}/${xSeen} = ${pct(xRead, xSeen)}`,
         ...xExamples,
+      );
+
+      // Writing must never be taken for a scribble, which would rub out what is under it.
+      const strokes = inks.flatMap((ink) => toStrokes(ink, SIZE, PEN));
+      const scribbles = strokes.filter((stroke) => isScribble(stroke.points)).length;
+      report.push(
+        '',
+        `Strokes taken for a scratch-out scribble: ${scribbles} of ${strokes.length}`,
       );
 
       const text = report.join('\n');

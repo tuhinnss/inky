@@ -705,6 +705,21 @@ these arrive": drawing adds one, erasing removes some, pixel-erasing swaps a str
 fragments, and clearing removes all. Undo is the same command reversed. The many store changes of
 one eraser drag are folded into one undo step.
 
+**Scratch to erase** ([`scratch.ts`](../src/ink/scratch.ts)). Scribbling over writing with the
+pen rubs it out, as on paper, without changing tool. When a pen stroke ends, it is a scribble if it
+turns back on itself at least four times along one direction, each time after sweeping half its
+size: five passes. Each sweep is measured against the larger of the scribble's width and height,
+so the wobble of a shaky line, however thin, is not a turn. A scribble then rubs out the strokes it
+touches that lie at least half inside the box it covers, and it leaves no ink of its own. If it
+covers nothing, it is ordinary ink: a zigzag on empty paper stays. Removing the strokes is one
+command, so one undo brings them back.
+
+The danger is writing taken for a scribble. Every stroke of the real handwriting used in section 8
+was run through the test: 13,690 strokes of pen digits and 3,517 of MathWriting expressions and
+symbols. None is a scribble. An earlier version that measured each sweep against its own direction
+only took 71 strokes, nearly all a loopy `8` closed past where it began, which is why the sweep is
+measured against the scribble's size.
+
 ### The tools and their menus
 
 The margin has two tool buttons, the pen and the eraser. The first press on either picks the tool
@@ -1023,14 +1038,14 @@ What makes that hold:
 
 ## 9. Tests
 
-714 tests in 35 files, run with Vitest in Node. `npm test` takes about two seconds.
+725 tests in 36 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area                  | Tests | What is covered                                                                                                                                                                                                                                                                                                                                                   |
 | --------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Math engine           | 93    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws, the variable x and an x with no value                                                                                                                                                  |
 | Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                                                                                                                                                                                                                  |
 | Layout                | 83    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence, telling a turned line from a climbing one and turning it level, joining a 4, 9 or 5 written in two strokes while keeping -1, =1, +1, 01 and 71 apart, and telling a short minus from a decimal point, and the dots of a `÷` set a bar's width or more from its bar |
-| Ink                   | 44    | Undo/redo stack behaviour, gesture folding, both erasers, where two strokes cross                                                                                                                                                                                                                                                                                 |
+| Ink                   | 55    | Undo/redo stack behaviour, gesture folding, both erasers, where two strokes cross, and what a scribble is and what it rubs out                                                                                                                                                                                                                                    |
 | Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                                                                                                                                                                                                          |
 | Model integration     | 53    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads, lines turned and climbing at up to 30°                                                                                                                                                             |
 | Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                                                                                                                                                                                                                   |

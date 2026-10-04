@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createStroke, type Stroke } from '../../src/ink';
+import { createStroke, isScribble, type Stroke } from '../../src/ink';
 import { segmentLine } from '../../src/layout';
 import { interpret } from '../../src/recognition/interpret';
 import { ascii, classify, classifyAlone, rasterize } from '../../tests/recognition/helpers';
@@ -120,6 +120,11 @@ describe.skipIf(!existsSync(path))(`real pen-written digits (${SPLIT} set)`, () 
       '',
       `flagged as doubtful (confidence < 0.6): ${below(wrongConfidence, 0.6)} of misreads, ${below(rightConfidence, 0.6)} of correct readings`,
     );
+
+    // Writing must never be taken for a scribble, which would rub out what is under it.
+    const strokes = inks.flat();
+    const scribbles = strokes.filter((stroke) => isScribble(stroke.points)).length;
+    lines.push(`strokes taken for a scratch-out scribble: ${scribbles} of ${strokes.length}`);
 
     const report = lines.join('\n');
     console.log(`\n${report}\n`);
