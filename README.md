@@ -12,7 +12,7 @@ network connection at all.
 Built for the Inter IIT Tech Meet 15.0 Bootcamp, Phase 1 Software problem statement
 ([docs/problem-statement.pdf](docs/problem-statement.pdf)).
 
-**Live demo:** _link to be added on deployment_
+**Live demo:** https://tuhinnss.github.io/inky/
 
 ## Quick start
 
@@ -183,6 +183,15 @@ docs/            architecture document, problem statement
 
 `npm run build` produces a static site in `dist/` that can be served from any static host. The
 build uses relative paths, so it works at a domain root and under a sub-path without changes.
+
+The live demo is served by GitHub Pages from the `gh-pages` branch, which holds nothing but a
+build (Settings → Pages → Deploy from a branch → `gh-pages`, `/ (root)`). To update it from a clean
+checkout of `main`:
+
+```bash
+bash scripts/publish-pages.sh   # builds and commits dist/ onto gh-pages; touches nothing else
+git push origin gh-pages
+```
 
 The host must serve over HTTPS, which service workers require. No special response headers are
 needed.
