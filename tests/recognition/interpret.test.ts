@@ -149,6 +149,20 @@ describe('fusing model output with geometry', () => {
     expect(fuse(probabilities({ '5': 0.995, '+': 0.001 }), 'cross').symbol).toBe('5');
   });
 
+  it('reads a 9 with a closed loop at the top, which the model takes for a 3', () => {
+    expect(fuse(probabilities({ '3': 0.9, '9': 0.1 }), 'other', true).symbol).toBe('9');
+    expect(fuse(probabilities({ '3': 0.9, '9': 0.1 }), 'other', false).symbol).toBe('3');
+  });
+
+  it('leaves 0 and 8, which have loops at the top too, to the model', () => {
+    expect(fuse(probabilities({ '8': 0.6, '9': 0.4 }), 'other', true).symbol).toBe('8');
+    expect(fuse(probabilities({ '0': 0.6, '9': 0.4 }), 'other', true).symbol).toBe('0');
+  });
+
+  it('does not overturn a 3 the model is all but certain of', () => {
+    expect(fuse(probabilities({ '3': 0.9999, '9': 0.00005 }), 'other', true).symbol).toBe('3');
+  });
+
   it('reports low confidence when the evidence is split', () => {
     const reading = fuse(probabilities({ '1': 0.5, '7': 0.45 }), 'other');
     expect(reading.symbol).toBe('1');

@@ -17,6 +17,7 @@
 
 import { crossingPoint, distance, pathLength, type Stroke } from '../ink';
 import { isFlat, measure, type Line, type StrokeMetrics, type SymbolGroup } from '../layout';
+import { hasLoopAtTop } from './loops';
 import { MODEL_SYMBOLS, type ModelSymbol, type RecognisedSymbol } from './model';
 
 export interface Reading {
@@ -117,14 +118,32 @@ const DEFAULT_WEIGHT: Readonly<Record<Shape, number>> = {
   other: 1,
 };
 
-/** Fuses model probabilities with the geometric prior for `shape`. */
-export function fuse(probabilities: ArrayLike<number>, shape: Shape): Reading {
+/**
+ * P(closed loop in the top half | symbol), relative to a "9". On the 30 training writers
+ * of the pen digit data, 81% of 9s had such a loop, 0.3% of 3s and 0.6% of 5s, and no
+ * 2, 6 or 7: the loop makes those digits about 200 times less likely than a 9. Digits
+ * that often have a loop up there (0, 8, and some 1s and 4s) are left to the model.
+ */
+const LOOP_AT_TOP_WEIGHTS: Readonly<Partial<Record<ModelSymbol, number>>> = {
+  '2': 0.005,
+  '3': 0.005,
+  '5': 0.005,
+  '6': 0.005,
+  '7': 0.005,
+};
+
+/**
+ * Fuses model probabilities with the geometric prior for `shape` and, if the symbol has
+ * a closed loop in its top half, the prior for that.
+ */
+export function fuse(probabilities: ArrayLike<number>, shape: Shape, loopAtTop = false): Reading {
   const weights = SHAPE_WEIGHTS[shape];
   let best = 0;
   let bestScore = -1;
   let total = 0;
   for (let i = 0; i < MODEL_SYMBOLS.length; i++) {
-    const score = probabilities[i] * (weights[MODEL_SYMBOLS[i]] ?? DEFAULT_WEIGHT[shape]);
+    const loop = loopAtTop ? (LOOP_AT_TOP_WEIGHTS[MODEL_SYMBOLS[i]] ?? 1) : 1;
+    const score = probabilities[i] * (weights[MODEL_SYMBOLS[i]] ?? DEFAULT_WEIGHT[shape]) * loop;
     total += score;
     if (score > bestScore) {
       bestScore = score;
@@ -159,5 +178,5 @@ export function interpret(
 ): Reading {
   if (symbol.kind === 'dot') return readDot(symbol, line);
   if (!probabilities) return { symbol: '-', confidence: 0 };
-  return fuse(probabilities, shapeOf(symbol, line));
+  return fuse(probabilities, shapeOf(symbol, line), hasLoopAtTop(symbol.strokes));
 }

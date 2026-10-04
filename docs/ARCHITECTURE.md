@@ -524,6 +524,18 @@ digit is: a `4` has a bent stroke, so does a `7` with a bar across it, and the b
 `5` sits at the end of the other stroke. `×` is spared because a `×` written askew can match too,
 and the model tells `×` from `+` reliably; what it confuses `+` with is digits.
 
+One more piece of geometry applies to any symbol: a closed loop in its top half
+([`loops.ts`](../src/recognition/loops.ts)). Many people write a `9` with a long tail that curls
+back to the left, and the model reads it as a `3`, the tail looking like the lower bowl of one.
+A `3` has no closed loop at the top, and the pen digit data says how rare one is. Among the 30
+training writers, 81% of 9s had such a loop, against 0.3% of 3s, 0.6% of 5s and no 2, 6 or 7.
+The ratio sets the weight: when there is a loop, `2 3 5 6 7` are weighted 0.005, about 200 times
+less likely than a `9`. Digits that often have a loop up there, `0`, `8` and some `1`s and `4`s,
+are left to the model. A loop is a stretch of one stroke at least 0.6 of the symbol's size long
+that comes back to within 8% of where it started and is at least 20% wide and tall, so a stroke
+that retraces itself does not count. Allowing a wider gap, 12% or 16%, caught a few more 9s on
+the training writers but misread as many other digits, so it was not taken.
+
 The decimal point is the one exception, for the reason given in section 2: a lone dot is never
 sent to the model. It is read as `.` with high confidence when it sits in the lower part of the
 line and with low confidence when it floats higher up, where it is more likely a stray mark.
@@ -874,7 +886,7 @@ its writer-independent test set, 3,498 digits by 14 people, none of whom the mod
 | -------------------------------------------------------------- | ---------------- |
 | Main model alone, each digit's strokes given as one symbol     | 93.48% (3,270)   |
 | With the digit helpers voting (what the app does)              | 97.80% (3,421)   |
-| Whole path: layout groups the strokes, geometry weighs in      | 97.00% (3,393)   |
+| Whole path: layout groups the strokes, geometry weighs in      | 97.23% (3,401)   |
 | Digits that layout split into more than one symbol             | 30               |
 | With the helpers, at 40 px and 160 px and pens from 2 to 12 px | 97.14% to 97.86% |
 | Misreads that the confidence indicator flags (below 0.6)       | 19.5%            |
@@ -889,6 +901,14 @@ a form the training data did not contain, read as `9`.
 That is what led to the digit helpers of section 2, which remove two thirds of the errors. Of the
 77 that remain, 26 are a `9` read as `3`; no other confusion occurs more than six times. Every
 digit but `9` (89.9%) and `8` (96.7%) is now read correctly at least 97.9% of the time.
+
+The loop at the top of a `9` (section 3, step 4) puts 8 of those 26 right in the whole path, taking
+the `9` from 89.9% to 92.3%; no other digit's figure moved. The weight was set from the training
+writers, and the figures here are the test writers, who played no part in choosing it. Most of the
+9s still read as `3` do have their loop. The model is simply too sure: for some it gives `3` a
+probability of 0.99999 or more. No weight the data supports overturns that. Only training the model
+on 9s written this way would. On MathWriting nothing changed in expressions; among the symbols
+written on their own, one `8` is now read right and one `7` is now read as a `4`.
 
 The whole path is a little lower than recognition alone because of layout, not reading: 30
 digits written in two strokes that do not overlap, mostly `4` and `5`, are taken for two symbols.
@@ -922,7 +942,7 @@ flag read as `5-`, and a short minus taken for a decimal point. Section 3 descri
 that now handle all three. The same rules took the pen digits' whole path from 96.86% to 97.00%,
 so they did not trade one kind of handwriting for another. The one reading problem among the
 operators, a `+` with a short bar read as `1` or `4`, is handled by the crossing rule in section
-5; it changed no other row of the table, and no pen digit.
+3, step 4; it changed no other row of the table, and no pen digit.
 
 **`÷` in context.** MathWriting's arithmetic has a single `÷` inside an expression, too few to
 judge. So each of its 30 real handwritten `÷` was set in place of a `+` or `−` that a writer put
@@ -975,7 +995,7 @@ What makes that hold:
 
 ## 9. Tests
 
-681 tests in 33 files, run with Vitest in Node. `npm test` takes about two seconds.
+694 tests in 34 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area                  | Tests | What is covered                                                                                                                                                                                                                                                                                                                                                   |
 | --------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -986,7 +1006,7 @@ What makes that hold:
 | Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                                                                                                                                                                                                          |
 | Model integration     | 53    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads, lines turned and climbing at up to 30°                                                                                                                                                             |
 | Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                                                                                                                                                                                                                   |
-| Geometry fusion       | 30    | Stroke arrangements, fusion weights, the decimal point, a `+` with a short bar told from a `1`, `4`, `5` or `7`                                                                                                                                                                                                                                                   |
+| Geometry fusion       | 43    | Stroke arrangements, fusion weights, the decimal point, a `+` with a short bar told from a `1`, `4`, `5` or `7`, and the closed loop at the top of a `9`, but not of a `2`, `3`, `6` or `7`                                                                                                                                                                       |
 | Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                                                                                                                                                                                                               |
 | Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                                                                                                                                                                                                                    |
 | Answer overlay        | 34    | What is written after the "=" or under a rule and how dark, the dotted line under a doubted symbol, the note for a line that makes no sense, that no question mark is ever drawn, and that the answer follows a line written at an angle, and that an answer goes with its sum while the lasso drags it and stays at the drop until the sum is read again         |
@@ -1007,8 +1027,8 @@ recognition would fail the build.
 ## 10. Limitations
 
 - **About one real digit in thirty is misread.** On pen-written digits from people the models
-  have not seen, the whole path reads 96.9% correctly (section 8). A `9` read as `3` is the
-  largest single cause that remains. In real handwritten expressions, `+ − × =` are read right
+  have not seen, the whole path reads 97.2% correctly (section 8). A `9` read as `3` is the
+  largest single cause that remains: the model is certain of some of them. In real handwritten expressions, `+ − × =` are read right
   97% to 100% of the time and `÷` 93%, and 87% of expressions are read exactly (section 8).
 - **A digit written in two strokes that do not overlap can still be split in two.** This happened
   to 30 of 3,498 real digits, mostly `4` and `5`.

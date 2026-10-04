@@ -32,7 +32,7 @@ accuracy for the main model alone, for recognition as the app does it with the d
 voting, and for the whole path; a per-digit table; the most common confusions; and how often the
 confidence indicator flags a misread.
 
-Expected on the test set: 93.48% for the main model alone, 97.80% with the helpers, 97.00% for the
+Expected on the test set: 93.48% for the main model alone, 97.80% with the helpers, 97.23% for the
 whole path.
 
 | Variable          | Default          | Meaning                                                  |
