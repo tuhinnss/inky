@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createStroke } from '../../src/ink';
+import { createStroke, type Stroke } from '../../src/ink';
 import { segmentLine } from '../../src/layout';
 import { fuse, interpret, readDot, shapeOf } from '../../src/recognition/interpret';
 import { MODEL_SYMBOLS, type ModelSymbol } from '../../src/recognition/model';
@@ -22,13 +22,77 @@ describe('recognising stroke arrangements', () => {
     ['2-3', 'bar'],
     ['2=3', 'stacked-bars'],
     ['2÷3', 'bar-with-dots'],
-    ['2+3', 'other'],
+    ['2+3', 'cross'],
     ['2×3', 'other'],
     ['283', 'other'],
     ['213', 'other'],
   ] as const)('classifies the middle symbol of "%s" as %s', (text, shape) => {
     const { line, symbol } = shapeIn(text, 1);
     expect(shapeOf(symbol, line)).toBe(shape);
+  });
+});
+
+/** A straight stroke through the given points, densely sampled. */
+function stroke(...corners: Array<[number, number]>): Stroke {
+  const points = [];
+  for (let i = 1; i < corners.length; i++) {
+    const [x0, y0] = corners[i - 1];
+    const [x1, y1] = corners[i];
+    const steps = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / 4));
+    for (let k = i === 1 ? 0 : 1; k <= steps; k++) {
+      points.push({
+        x: x0 + ((x1 - x0) * k) / steps,
+        y: y0 + ((y1 - y0) * k) / steps,
+        pressure: 0.5,
+      });
+    }
+  }
+  return createStroke(points, 4, '#000');
+}
+
+describe('a cross', () => {
+  /** The shape of two strokes standing in a line of 80 px digits. */
+  const shapeOfPair = (a: Stroke, b: Stroke) => {
+    const line = segmentLine([stroke([20, 100], [20, 180]), a, b, stroke([400, 100], [400, 180])]);
+    const symbol = line.symbols.find((s) => s.strokes.includes(a))!;
+    expect(symbol.strokes).toContain(b);
+    return shapeOf(symbol, line);
+  };
+
+  it('is a tall "+" with a short bar, as handwriting often has', () => {
+    expect(shapeOfPair(stroke([120, 100], [121, 170]), stroke([106, 135], [134, 134]))).toBe(
+      'cross',
+    );
+  });
+
+  it('is a "+" whose bar is drawn first and a little slanted', () => {
+    expect(shapeOfPair(stroke([100, 142], [140, 132]), stroke([118, 112], [121, 162]))).toBe(
+      'cross',
+    );
+  });
+
+  it('is not a "1" with a bar across its foot', () => {
+    expect(shapeOfPair(stroke([120, 100], [120, 180]), stroke([105, 178], [135, 178]))).toBe(
+      'other',
+    );
+  });
+
+  it('is not a "7" with a bar across, whose other stroke bends', () => {
+    expect(
+      shapeOfPair(stroke([100, 100], [140, 100], [118, 180]), stroke([112, 140], [138, 140])),
+    ).toBe('other');
+  });
+
+  it('is not a "4" written as an "L" and a stem', () => {
+    expect(
+      shapeOfPair(stroke([110, 100], [100, 150], [145, 150]), stroke([135, 110], [135, 180])),
+    ).toBe('other');
+  });
+
+  it('is not a bar that passes over the top of a stroke without crossing it', () => {
+    expect(shapeOfPair(stroke([120, 110], [120, 175]), stroke([104, 104], [136, 104]))).toBe(
+      'other',
+    );
   });
 });
 
@@ -70,6 +134,19 @@ describe('fusing model output with geometry', () => {
     // Geometry scales the model's view by 20×; a 500× preference survives that.
     const reading = fuse(probabilities({ '7': 0.998, '-': 0.002 }), 'bar');
     expect(reading.symbol).toBe('7');
+  });
+
+  it('reads a cross as "+" when the model leans to "1" or "4"', () => {
+    expect(fuse(probabilities({ '1': 0.55, '+': 0.44 }), 'cross').symbol).toBe('+');
+    expect(fuse(probabilities({ '4': 0.64, '1': 0.13, '+': 0.13 }), 'cross').symbol).toBe('+');
+  });
+
+  it('leaves a "×" written askew to the model', () => {
+    expect(fuse(probabilities({ '×': 0.44, '7': 0.38, '+': 0.18 }), 'cross').symbol).toBe('×');
+  });
+
+  it('leaves a digit the model is sure of alone, even if it looks like a cross', () => {
+    expect(fuse(probabilities({ '5': 0.995, '+': 0.001 }), 'cross').symbol).toBe('5');
   });
 
   it('reports low confidence when the evidence is split', () => {

@@ -85,5 +85,5 @@ exactly right; why the others are not; and the most common confusions.
 | `EVAL_PEN`         | `4`                                 | Pen width, in pixels                    |
 | `EVAL_REPORT`      |                                     | Also write the report to this file      |
 
-Expected: 85.6% of expressions read exactly right, 91.8% grouped into the right symbols, and 97.8%
+Expected: 86.6% of expressions read exactly right, 91.8% grouped into the right symbols, and 98.1%
 of symbols read right within those.

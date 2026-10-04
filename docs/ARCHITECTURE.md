@@ -508,11 +508,19 @@ value is the confidence shown to the user.
 | One flat stroke                        | `−` × 1                       | × 0.05                |
 | Two flat strokes, stacked              | `=` × 1                       | × 0.05                |
 | A flat stroke with a dot above / below | `÷` × 1                       | × 0.1                 |
+| A flat and an upright stroke crossing  | `+` × 1, `×` × 1              | × 0.05                |
 | Anything else                          | × 1                           | `−` × 0.05, `=` × 0.2 |
 
 The weights are soft on purpose. A weight of 0.05 does not forbid a reading; it means the model
 must be twenty times surer of it to win. Geometry scales the model's opinion and never replaces
 it. All 15 of these classes are always the models' call.
+
+The crossing was added after measuring real handwriting (section 8). A `+` with a short bar and a
+long stem can look like a `1` or a `4` to the model, and it read 7 of 118 that way. Nearly every
+`+` is two straight strokes, one flat and one upright, crossing away from the ends of both. No
+digit is: a `4` has a bent stroke, so does a `7` with a bar across it, and the bar of a `1` or a
+`5` sits at the end of the other stroke. `×` is spared because a `×` written askew can match too,
+and the model tells `×` from `+` reliably; what it confuses `+` with is digits.
 
 The decimal point is the one exception, for the reason given in section 2: a lone dot is never
 sent to the model. It is read as `.` with high confidence when it sits in the lower part of the
@@ -895,10 +903,10 @@ through the same path as ink on the page: grouping into lines and symbols, recog
 
 | Measure (MathWriting)                            | Before the fixes below | Now                |
 | ------------------------------------------------ | ---------------------- | ------------------ |
-| Expressions read exactly right                   | 81.1%                  | **85.6%**          |
+| Expressions read exactly right                   | 81.1%                  | **86.6%**          |
 | Expressions grouped into the right symbols       | 87.7%                  | **91.8%**          |
-| Symbols read right, in expressions grouped right | 96.3% of 1,381         | **97.8%** of 1,552 |
-| `+` in context                                   | 94.6%                  | 94.1% (118)        |
+| Symbols read right, in expressions grouped right | 96.3% of 1,381         | **98.1%** of 1,552 |
+| `+` in context                                   | 94.6%                  | **97.5%** (118)    |
 | `−` in context                                   | 94.2%                  | **97.8%** (139)    |
 | `×` in context                                   | 100%                   | 100% (19)          |
 | `=` in context                                   | 98.2%                  | 98.2% (57)         |
@@ -908,10 +916,12 @@ The first measurement showed that the operators were read well, and that most of
 was grouping, not reading: a `4` or `9` in two strokes read as two digits, a `5` with a separate
 flag read as `5-`, and a short minus taken for a decimal point. Section 3 describes the rules
 that now handle all three. The same rules took the pen digits' whole path from 96.86% to 97.00%,
-so they did not trade one kind of handwriting for another.
+so they did not trade one kind of handwriting for another. The one reading problem among the
+operators, a `+` with a short bar read as `1` or `4`, is handled by the crossing rule in section
+5; it changed no other row of the table, and no pen digit.
 
-What remains: `+` read as `1` or `4` (7 of 118), when its crossbar is short; an expression broken
-across two lines (9 of 439); and `÷`, which cannot be judged with one example in context. Written
+What remains: `+` read as `1` or `4` (3 of 118), one of them a `+` whose bar does not reach the
+stem; an expression broken across two lines (9 of 439); and `÷`, which cannot be judged with one example in context. Written
 large as a lone sign, `÷` came out in two or three pieces 7 times out of 30: with nothing around
 it, there is no line to say how small its dots are. Repeat with `npm run eval:operators`.
 
@@ -950,18 +960,18 @@ What makes that hold:
 
 ## 9. Tests
 
-659 tests in 31 files, run with Vitest in Node. `npm test` takes about two seconds.
+674 tests in 32 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area                  | Tests | What is covered                                                                                                                                                                                                                                                                                                                                           |
 | --------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Math engine           | 89    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws                                                                                                                                                                                 |
 | Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                                                                                                                                                                                                          |
 | Layout                | 78    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence, telling a turned line from a climbing one and turning it level, joining a 4, 9 or 5 written in two strokes while keeping -1, =1, +1, 01 and 71 apart, and telling a short minus from a decimal point                                                       |
-| Ink                   | 38    | Undo/redo stack behaviour, gesture folding, both erasers                                                                                                                                                                                                                                                                                                  |
+| Ink                   | 44    | Undo/redo stack behaviour, gesture folding, both erasers, where two strokes cross                                                                                                                                                                                                                                                                         |
 | Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                                                                                                                                                                                                  |
 | Model integration     | 53    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads, lines turned and climbing at up to 30°                                                                                                                                                     |
 | Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                                                                                                                                                                                                           |
-| Geometry fusion       | 21    | Stroke arrangements, fusion weights, the decimal point                                                                                                                                                                                                                                                                                                    |
+| Geometry fusion       | 30    | Stroke arrangements, fusion weights, the decimal point, a `+` with a short bar told from a `1`, `4`, `5` or `7`                                                                                                                                                                                                                                           |
 | Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                                                                                                                                                                                                       |
 | Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                                                                                                                                                                                                            |
 | Answer overlay        | 34    | What is written after the "=" or under a rule and how dark, the dotted line under a doubted symbol, the note for a line that makes no sense, that no question mark is ever drawn, and that the answer follows a line written at an angle, and that an answer goes with its sum while the lasso drags it and stays at the drop until the sum is read again |
@@ -971,7 +981,7 @@ What makes that hold:
 | Lasso                 | 21    | Point in a loop, the loop closing itself, which strokes a loop takes, moving strokes without changing how they look, the box round a selection, and where its Delete button goes                                                                                                                                                                          |
 | Seeing what was read  | 10    | Which symbol's ink a tap is on and not the empty corner of its box, which sum a tap on ink or on an answer points at, taps on a line written at an angle, and how symbols are labelled                                                                                                                                                                    |
 | Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                                                                                                                                                                                          |
-| Evaluation data       | 8     | Reading pen trajectory files for the real-handwriting measurement in section 8                                                                                                                                                                                                                                                                            |
+| Evaluation data       | 12    | Reading pen trajectory files and MathWriting inks for the real-handwriting measurements in section 8                                                                                                                                                                                                                                                      |
 
 Two choices are worth noting. Layout and recognition are tested with **synthetic handwriting**: a
 fixture that turns a string such as `7.5÷2-60=` into stroke paths with controllable size, spacing
@@ -984,7 +994,7 @@ recognition would fail the build.
 - **About one real digit in thirty is misread.** On pen-written digits from people the models
   have not seen, the whole path reads 96.9% correctly (section 8). A `9` read as `3` is the
   largest single cause that remains. In real handwritten expressions, operators are read right
-  94% (`+`) to 100% (`×`) of the time, and 86% of expressions are read exactly (section 8).
+  97% to 100% of the time, and 87% of expressions are read exactly (section 8).
 - **A digit written in two strokes that do not overlap can still be split in two.** This happened
   to 30 of 3,498 real digits, mostly `4` and `5`.
 - **Symbols must not overlap horizontally.** Segmentation is by horizontal overlap, so digits

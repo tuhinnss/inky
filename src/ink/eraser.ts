@@ -7,7 +7,14 @@
  * capsule's axis.
  */
 
-import { distance, distanceToSegment, lerp, segmentDistance, type Vec } from './geometry';
+import {
+  distance,
+  distanceToSegment,
+  lerp,
+  pathLength,
+  segmentDistance,
+  type Vec,
+} from './geometry';
 import { boundsIntersect, createStroke, strokeBounds, type Point, type Stroke } from './types';
 
 function eraserReach(stroke: Stroke, radius: number): number {
@@ -54,12 +61,6 @@ function findEdge(erased: Point, kept: Point, from: Vec, to: Vec, reach: number)
     else high = middle;
   }
   return interpolate(erased, kept, high);
-}
-
-function pathLength(points: readonly Point[]): number {
-  let total = 0;
-  for (let i = 1; i < points.length; i++) total += distance(points[i - 1], points[i]);
-  return total;
 }
 
 /**

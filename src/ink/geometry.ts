@@ -33,6 +33,21 @@ export function segmentsCross(a: Vec, b: Vec, c: Vec, d: Vec): boolean {
   return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
 }
 
+/** Where segments `a`–`b` and `c`–`d` cross, or `null` if they do not. */
+export function crossingPoint(a: Vec, b: Vec, c: Vec, d: Vec): Vec | null {
+  if (!segmentsCross(a, b, c, d)) return null;
+  // The sides of c and d relative to a–b are proportional to their distances from it.
+  const t = side(c, d, a) / (side(c, d, a) - side(c, d, b));
+  return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
+}
+
+/** The length of the path through `points`, in order. */
+export function pathLength(points: readonly Vec[]): number {
+  let total = 0;
+  for (let i = 1; i < points.length; i++) total += distance(points[i - 1], points[i]);
+  return total;
+}
+
 /**
  * Shortest distance between segments `a`–`b` and `c`–`d`.
  *

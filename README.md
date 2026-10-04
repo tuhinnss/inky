@@ -115,7 +115,7 @@ apart.
 
 Two digit helpers vote with it on which digit a digit is. On 3,498 digits written by people none
 of the models has seen, the main model alone reads 93.5% and the three together 97.8%. On
-expressions handwritten by people none of them has seen, 97.8% of symbols and 86% of whole
+expressions handwritten by people none of them has seen, 98.1% of symbols and 87% of whole
 expressions are read right, operators included.
 
 | Helper                | Source                                                                                           | Licence             | Size                       | Bundled as                                                                                                                       |
@@ -134,7 +134,7 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 | `npm run dev`            | Start the dev server                                                                                 |
 | `npm run build`          | Type-check, then build to `dist/`                                                                    |
 | `npm run preview`        | Serve the production build locally                                                                   |
-| `npm test`               | Run the 659 unit and integration tests once                                                          |
+| `npm test`               | Run the 674 unit and integration tests once                                                          |
 | `npm run typecheck`      | Type-check without building                                                                          |
 | `npm run lint`           | Lint the source. Fails on `eval` or `new Function`                                                   |
 | `npm run format`         | Format the source with Prettier                                                                      |
