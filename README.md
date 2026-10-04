@@ -114,7 +114,9 @@ apart.
 | Accuracy     | 99.44% on the upstream held-out test set (1,599 of 1,608), reproduced by us after conversion                                                                    |
 
 Two digit helpers vote with it on which digit a digit is. On 3,498 digits written by people none
-of the models has seen, the main model alone reads 93.5% and the three together 97.8%.
+of the models has seen, the main model alone reads 93.5% and the three together 97.8%. On
+expressions handwritten by people none of them has seen, 97.8% of symbols and 86% of whole
+expressions are read right, operators included.
 
 | Helper                | Source                                                                                           | Licence             | Size                       | Bundled as                                                                                                                       |
 | --------------------- | ------------------------------------------------------------------------------------------------ | ------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -127,17 +129,18 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 
 ## Scripts
 
-| Command               | What it does                                                                            |
-| --------------------- | --------------------------------------------------------------------------------------- |
-| `npm run dev`         | Start the dev server                                                                    |
-| `npm run build`       | Type-check, then build to `dist/`                                                       |
-| `npm run preview`     | Serve the production build locally                                                      |
-| `npm test`            | Run the 641 unit and integration tests once                                             |
-| `npm run typecheck`   | Type-check without building                                                             |
-| `npm run lint`        | Lint the source. Fails on `eval` or `new Function`                                      |
-| `npm run format`      | Format the source with Prettier                                                         |
-| `npm run capture`     | Serve a build that can save handwriting (below)                                         |
-| `npm run eval:digits` | Measure recognition on real pen-written digits ([scripts/eval](scripts/eval/README.md)) |
+| Command                  | What it does                                                                                         |
+| ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `npm run dev`            | Start the dev server                                                                                 |
+| `npm run build`          | Type-check, then build to `dist/`                                                                    |
+| `npm run preview`        | Serve the production build locally                                                                   |
+| `npm test`               | Run the 659 unit and integration tests once                                                          |
+| `npm run typecheck`      | Type-check without building                                                                          |
+| `npm run lint`           | Lint the source. Fails on `eval` or `new Function`                                                   |
+| `npm run format`         | Format the source with Prettier                                                                      |
+| `npm run capture`        | Serve a build that can save handwriting (below)                                                      |
+| `npm run eval:digits`    | Measure recognition on real pen-written digits ([scripts/eval](scripts/eval/README.md))              |
+| `npm run eval:operators` | Measure operators and whole expressions on real handwriting ([scripts/eval](scripts/eval/README.md)) |
 
 ### Collecting real handwriting
 

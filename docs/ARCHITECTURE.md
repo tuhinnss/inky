@@ -393,6 +393,20 @@ Dots are handled separately, because overlap gives the wrong answer for them in 
   it. So a mark no larger than 22% of the line height is set aside before merging.
 - The dots of `÷` overlap nothing but belong to their bar. So a dot directly above or below a
   lone flat stroke is attached to it, at most one on each side.
+- A small mark that is a short dash, at least 2.5 times as wide as tall and 13% of the line height
+  long, up in the middle of the line, is not a dot but a minus sign written small. A decimal point
+  sits low; a minus never does.
+
+Some digits are written in two strokes that only touch, and overlap cannot see that they belong
+together. Two cases were common enough in real handwriting to put right after merging:
+
+- A `4` written as an "L" and then a separate stroke down, and a `9` written as a loop and then a
+  stem, were read as `11`, `61` or `01`. A piece just left of a tall, thin stem is joined to it
+  when it is shorter than the stem, level with its top, within 12% of the line height of it, and
+  not made only of bars. The last two conditions keep `-1`, `=1`, `+1` and `01` apart.
+- A `5` whose flag was drawn separately was read as `5-`. A lone bar at the very top of the digit
+  just left of it is that digit's flag: a minus sign sits in the middle of the line, never at the
+  top of a digit.
 
 Every symbol gets a key: the ids of its strokes. Because strokes are immutable and ids are never
 reused, two symbols with the same key are guaranteed to be the same ink.
@@ -850,8 +864,8 @@ its writer-independent test set, 3,498 digits by 14 people, none of whom the mod
 | -------------------------------------------------------------- | ---------------- |
 | Main model alone, each digit's strokes given as one symbol     | 93.48% (3,270)   |
 | With the digit helpers voting (what the app does)              | 97.80% (3,421)   |
-| Whole path: layout groups the strokes, geometry weighs in      | 96.86% (3,388)   |
-| Digits that layout split into more than one symbol             | 36               |
+| Whole path: layout groups the strokes, geometry weighs in      | 97.00% (3,393)   |
+| Digits that layout split into more than one symbol             | 30               |
 | With the helpers, at 40 px and 160 px and pens from 2 to 12 px | 97.14% to 97.86% |
 | Misreads that the confidence indicator flags (below 0.6)       | 19.5%            |
 | Correct readings it flags                                      | 0.3%             |
@@ -866,13 +880,40 @@ That is what led to the digit helpers of section 2, which remove two thirds of t
 77 that remain, 26 are a `9` read as `3`; no other confusion occurs more than six times. Every
 digit but `9` (89.9%) and `8` (96.7%) is now read correctly at least 97.9% of the time.
 
-The whole path is a point lower than recognition alone because of layout, not reading: 36 digits
-written in two strokes that do not overlap, mostly `4` and `5`, are taken for two symbols. A digit
-standing alone gives layout nothing to judge its size against; within a line of writing the
-neighbours do.
+The whole path is a little lower than recognition alone because of layout, not reading: 30
+digits written in two strokes that do not overlap, mostly `4` and `5`, are taken for two symbols.
+A digit standing alone gives layout nothing to judge its size against; within a line of writing
+the neighbours do. It can be repeated with `npm run eval:digits`; see
+[scripts/eval](../scripts/eval/README.md).
 
-The data set has digits only, so the operators are not covered by this measurement. It can be
-repeated with `npm run eval:digits`; see [scripts/eval](../scripts/eval/README.md).
+**Operators and whole expressions.** The digit data set has no operators, so they were measured
+on [MathWriting](https://github.com/google-research/google-research/tree/master/mathwriting)
+(Google Research, 2024, CC BY-NC-SA 4.0): expressions handwritten on touchscreens and with digital
+pens, stored as strokes, by people none of the bundled models has seen. Out of its 230,000 inks,
+439 whole expressions and 468 single symbols use only CalcInk's vocabulary. Each expression went
+through the same path as ink on the page: grouping into lines and symbols, recognition, reading.
+
+| Measure (MathWriting)                            | Before the fixes below | Now                |
+| ------------------------------------------------ | ---------------------- | ------------------ |
+| Expressions read exactly right                   | 81.1%                  | **85.6%**          |
+| Expressions grouped into the right symbols       | 87.7%                  | **91.8%**          |
+| Symbols read right, in expressions grouped right | 96.3% of 1,381         | **97.8%** of 1,552 |
+| `+` in context                                   | 94.6%                  | 94.1% (118)        |
+| `−` in context                                   | 94.2%                  | **97.8%** (139)    |
+| `×` in context                                   | 100%                   | 100% (19)          |
+| `=` in context                                   | 98.2%                  | 98.2% (57)         |
+| `.` in context                                   | 100%                   | 100% (97)          |
+
+The first measurement showed that the operators were read well, and that most of what went wrong
+was grouping, not reading: a `4` or `9` in two strokes read as two digits, a `5` with a separate
+flag read as `5-`, and a short minus taken for a decimal point. Section 3 describes the rules
+that now handle all three. The same rules took the pen digits' whole path from 96.86% to 97.00%,
+so they did not trade one kind of handwriting for another.
+
+What remains: `+` read as `1` or `4` (7 of 118), when its crossbar is short; an expression broken
+across two lines (9 of 439); and `÷`, which cannot be judged with one example in context. Written
+large as a lone sign, `÷` came out in two or three pieces 7 times out of 30: with nothing around
+it, there is no line to say how small its dots are. Repeat with `npm run eval:operators`.
 
 ### Memory
 
@@ -909,13 +950,13 @@ What makes that hold:
 
 ## 9. Tests
 
-641 tests in 29 files, run with Vitest in Node. `npm test` takes about two seconds.
+659 tests in 31 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area                  | Tests | What is covered                                                                                                                                                                                                                                                                                                                                           |
 | --------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Math engine           | 89    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws                                                                                                                                                                                 |
 | Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                                                                                                                                                                                                          |
-| Layout                | 64    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence, telling a turned line from a climbing one and turning it level                                                                                                                                                                                             |
+| Layout                | 78    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence, telling a turned line from a climbing one and turning it level, joining a 4, 9 or 5 written in two strokes while keeping -1, =1, +1, 01 and 71 apart, and telling a short minus from a decimal point                                                       |
 | Ink                   | 38    | Undo/redo stack behaviour, gesture folding, both erasers                                                                                                                                                                                                                                                                                                  |
 | Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                                                                                                                                                                                                  |
 | Model integration     | 53    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads, lines turned and climbing at up to 30°                                                                                                                                                     |
@@ -942,9 +983,10 @@ recognition would fail the build.
 
 - **About one real digit in thirty is misread.** On pen-written digits from people the models
   have not seen, the whole path reads 96.9% correctly (section 8). A `9` read as `3` is the
-  largest single cause that remains. Operators have been measured on synthetic handwriting only.
-- **A digit written in two strokes that do not overlap can be split in two.** This happened to 36
-  of 3,498 real digits, mostly `4` and `5`.
+  largest single cause that remains. In real handwritten expressions, operators are read right
+  94% (`+`) to 100% (`×`) of the time, and 86% of expressions are read exactly (section 8).
+- **A digit written in two strokes that do not overlap can still be split in two.** This happened
+  to 30 of 3,498 real digits, mostly `4` and `5`.
 - **Symbols must not overlap horizontally.** Segmentation is by horizontal overlap, so digits
   written touching or on top of each other are read as one symbol. Cursive-style joined digits
   are not supported.

@@ -53,6 +53,15 @@ const DOT_SIZE = 0.22;
 const MIN_WIDTH = 0.1;
 /** Two strokes are one symbol when they share this much of the narrower one's width. */
 const OVERLAP = 0.4;
+/**
+ * A small mark at least this many times wider than tall, and higher on the line than a
+ * decimal point sits, is a short minus sign rather than a dot.
+ */
+const DASH_RATIO = 2.5;
+/** ...and at least this long, as a fraction of the line height. A dot can be a short tick. */
+const DASH_LENGTH = 0.13;
+/** Below this fraction of the line's height a small mark is low enough to be a point. */
+const POINT_ZONE = 0.55;
 
 interface Group {
   members: StrokeMetrics[];
@@ -101,6 +110,71 @@ function attachDivisionDots(dots: StrokeMetrics[], groups: Group[]): StrokeMetri
   });
 }
 
+function boundsOf(group: Group): Bounds {
+  return group.members.map((m): Bounds => m).reduce(unionBounds);
+}
+
+/**
+ * Whether `piece`, just left of `stem`, is the rest of the digit the stem belongs to.
+ *
+ * Many people write a 4 as an "L" and then a separate stroke down, and a 9 as a loop and
+ * then a stem. The two strokes only touch, so they do not overlap enough to be grouped,
+ * and the digit is read as "11", "01" or "61". The piece is recognisable: shorter than
+ * the stem, level with its top, right against it, and not just a bar or two (a "-1" or
+ * "=1" must stay two symbols).
+ */
+function completesStem(piece: Group, stem: Group, height: number): boolean {
+  if (stem.members.length !== 1) return false;
+  const s = boundsOf(stem);
+  const p = boundsOf(piece);
+  const stemHeight = s.maxY - s.minY;
+  const pieceHeight = p.maxY - p.minY;
+  return (
+    s.maxX - s.minX <= 0.25 * height &&
+    stemHeight >= 0.7 * height &&
+    !piece.members.every(isFlat) &&
+    pieceHeight >= 0.25 * height &&
+    pieceHeight <= 0.75 * stemHeight &&
+    p.minY <= s.minY + 0.2 * stemHeight &&
+    s.minX - p.maxX <= 0.12 * height
+  );
+}
+
+/**
+ * Whether a lone bar is the flag of the digit just left of it. A 5 is often written as
+ * a body and then a separate flag across its top; the flag sits at the top of the digit,
+ * where a minus sign never does.
+ */
+function isFlagOf(bar: Group, digit: Group, height: number): boolean {
+  if (bar.members.length !== 1 || !isFlat(bar.members[0])) return false;
+  const b = boundsOf(bar);
+  const d = boundsOf(digit);
+  const digitHeight = d.maxY - d.minY;
+  return (
+    !digit.members.every(isFlat) &&
+    digitHeight >= 0.6 * height &&
+    (b.minY + b.maxY) / 2 <= d.minY + 0.2 * digitHeight &&
+    b.minX >= d.minX &&
+    b.minX - d.maxX <= 0.15 * height
+  );
+}
+
+/** Puts back together the digits that people write in two strokes side by side. */
+function joinBrokenDigits(groups: Group[], height: number): Group[] {
+  const joined: Group[] = [];
+  for (const group of groups) {
+    const previous = joined[joined.length - 1];
+    if (previous && (completesStem(previous, group, height) || isFlagOf(group, previous, height))) {
+      previous.members.push(...group.members);
+      previous.minX = Math.min(previous.minX, group.minX);
+      previous.maxX = Math.max(previous.maxX, group.maxX);
+      continue;
+    }
+    joined.push(group);
+  }
+  return joined;
+}
+
 function toSymbol(members: StrokeMetrics[], kind: SymbolGroup['kind']): SymbolGroup {
   const strokes = members.map((m) => m.stroke).sort((a, b) => a.id - b.id);
   return {
@@ -127,7 +201,17 @@ export function segmentLine(strokes: readonly Stroke[]): Line {
   const metrics = strokes.map(measure);
   const height = lineHeight(metrics);
 
-  const isDot = (m: StrokeMetrics): boolean => Math.max(m.width, m.height) <= DOT_SIZE * height;
+  const top = Math.min(...metrics.map((m) => m.minY));
+  const depth = Math.max(...metrics.map((m) => m.maxY)) - top;
+  // A small mark is a dot, unless it is a short dash up in the middle of the line: that
+  // is a minus sign written small, which a decimal point, sitting low, never is.
+  const isShortDash = (m: StrokeMetrics): boolean =>
+    m.width >= DASH_RATIO * m.height &&
+    m.width >= DASH_LENGTH * height &&
+    depth > 0 &&
+    (m.centreY - top) / depth < POINT_ZONE;
+  const isDot = (m: StrokeMetrics): boolean =>
+    Math.max(m.width, m.height) <= DOT_SIZE * height && !isShortDash(m);
   const dots = metrics.filter(isDot);
   const shapes = metrics.filter((m) => !isDot(m)).sort((a, b) => a.minX - b.minX);
 
@@ -149,9 +233,10 @@ export function segmentLine(strokes: readonly Stroke[]): Line {
     groups.push({ members: [m], minX, maxX });
   }
 
-  const loose = attachDivisionDots(dots, groups);
+  const joined = joinBrokenDigits(groups, height);
+  const loose = attachDivisionDots(dots, joined);
   const symbols = [
-    ...groups.map((group) => toSymbol(group.members, 'shape')),
+    ...joined.map((group) => toSymbol(group.members, 'shape')),
     ...loose.map((dot) => toSymbol([dot], 'dot')),
   ];
 
