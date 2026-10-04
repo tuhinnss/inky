@@ -584,6 +584,14 @@ into the right symbols, 64 of 70 (91%) of the `x` are read as `x`, and 75% of th
 read exactly. Most of the misses are an `x` written as two curves back to back, `)(`, which do not
 cross: layout takes them for two symbols, read as `06` or `76`.
 
+Joining such a pair into one symbol was tried and not kept. A `)` and a `(` of a height, bulging
+towards each other near their middles, catch most of them, but two things went wrong. The model
+had never seen the shape and read the joined pair as `=`, `2` or `3` six times, so the pair would
+have needed geometry to overrule it. And the rule also joined real digits, a `3` beside a `6`
+whose loop is open among them, in 3 of the 439 sums without `x`, which it would then have read
+as `x`. About ten `x` fixed in expressions that use `x` is not worth sums without one going wrong;
+those are what the notebook is mostly for.
+
 ## 4. Drawing
 
 ### Three canvases
