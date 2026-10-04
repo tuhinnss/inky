@@ -81,7 +81,10 @@ exactly right; why the others are not; and the most common confusions.
 There is only one `÷` inside an expression in this arithmetic, so the report ends with `÷` in
 context measured another way: each real `÷` from the single symbols is set in place of a `+` or
 `−` between two numbers, in every expression that was read exactly right, scaled to the width of
-the sign it replaces. Everything else on the line is still the writer's.
+the sign it replaces. Everything else on the line is still the writer's. Inks that use the variable
+x are measured last, apart from the rest: how often a handwritten x is read as `×`, which is x where
+a number belongs, and how often it is read as x inside expressions. Expressions that write `3x` for
+`3 × x` are left out, since CalcInk does not read that.
 
 | Variable           | Default                             | Meaning                                 |
 | ------------------ | ----------------------------------- | --------------------------------------- |
@@ -91,4 +94,5 @@ the sign it replaces. Everything else on the line is still the writer's.
 | `EVAL_REPORT`      |                                     | Also write the report to this file      |
 
 Expected: 86.6% of expressions read exactly right, 91.8% grouped into the right symbols, and 98.1%
-of symbols read right within those; `÷` set into expressions read right 92.6% of the time.
+of symbols read right within those; `÷` set into expressions read right 92.6% of the time; a lone
+x read as `×` 82.8% of the time, and x read as x in 91.4% of expressions grouped right.

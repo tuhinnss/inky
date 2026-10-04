@@ -559,6 +559,31 @@ so they were removed. The faint answer says "check this" and the dotted line say
 A line that does not make sense gets no answer at all: a zigzag under the symbol at fault and a
 short note saying why.
 
+**The variable x** ([`variables.ts`](../src/app/variables.ts)). `x = 10` on one line gives x a
+value, and `x × 3 =` below it is answered with it. The model has no letters, but a handwritten `x`
+and a times sign are the same two crossing strokes, and it reads both as `×`. Position tells them
+apart: where a number belongs, at the start of a line or after an operator or `=`, a `×` cannot
+be a times sign, so it is read as `x`; between two numbers it multiplies. A line that began with
+`×` was always an error before, so no sum that worked changes meaning. Tapping the line shows the
+symbol labelled `x`.
+
+A line `x = …` with no `=` at its end is a definition. It holds from its line down, the way a page
+is read, and a later definition takes over from where it is written; `x = x + 1` uses the `x`
+above it. So once every line is read, the page is worked out once more, top to bottom
+(`evaluatePage`), and each line that uses `x` is evaluated with the value given nearest above it.
+Changing a definition answers every sum below it again, although their ink did not change. A sum
+that uses `x` above any definition gets the usual note under the `x`: give x a value above.
+
+There is one variable, because the model gives one letter: `x`. Writing `3x` for `3 × x` is not
+understood, since a `×` after a number can only be a times sign there.
+
+Whether a real handwritten `x` comes out as `×` was measured on MathWriting (section 8), which has
+29 handwritten `x` on their own and 85 expressions that use `x` without writing `3x`. Of the lone
+ones, 24 (83%) are read as `×`, and so as `x` at the start of a line. In the expressions grouped
+into the right symbols, 64 of 70 (91%) of the `x` are read as `x`, and 75% of the expressions are
+read exactly. Most of the misses are an `x` written as two curves back to back, `)(`, which do not
+cross: layout takes them for two symbols, read as `06` or `76`.
+
 ## 4. Drawing
 
 ### Three canvases
@@ -798,8 +823,11 @@ anywhere in the codebase, and ESLint is configured to fail the build if one is i
 expression := term   (('+' | '−') term)*
 term       := unary  (('×' | '÷') unary)*
 unary      := '−' unary | primary
-primary    := NUMBER | '(' expression ')'
+primary    := NUMBER | VARIABLE | '(' expression ')'
 ```
+
+`VARIABLE` is `x`. The evaluator is given the values of the variables known at that line; one it
+is not given is an error that points at it, like any other.
 
 The parser is recursive descent with one function per rule. Precedence comes from the nesting:
 `expression` calls `term`, so multiplication binds tighter than addition. Both loops consume left
@@ -995,11 +1023,11 @@ What makes that hold:
 
 ## 9. Tests
 
-694 tests in 34 files, run with Vitest in Node. `npm test` takes about two seconds.
+714 tests in 35 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area                  | Tests | What is covered                                                                                                                                                                                                                                                                                                                                                   |
 | --------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Math engine           | 89    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws                                                                                                                                                                                         |
+| Math engine           | 93    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws, the variable x and an x with no value                                                                                                                                                  |
 | Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                                                                                                                                                                                                                  |
 | Layout                | 83    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence, telling a turned line from a climbing one and turning it level, joining a 4, 9 or 5 written in two strokes while keeping -1, =1, +1, 01 and 71 apart, and telling a short minus from a decimal point, and the dots of a `÷` set a bar's width or more from its bar |
 | Ink                   | 44    | Undo/redo stack behaviour, gesture folding, both erasers, where two strokes cross                                                                                                                                                                                                                                                                                 |
@@ -1008,6 +1036,7 @@ What makes that hold:
 | Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                                                                                                                                                                                                                   |
 | Geometry fusion       | 43    | Stroke arrangements, fusion weights, the decimal point, a `+` with a short bar told from a `1`, `4`, `5` or `7`, and the closed loop at the top of a `9`, but not of a `2`, `3`, `6` or `7`                                                                                                                                                                       |
 | Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                                                                                                                                                                                                               |
+| Variables             | 16    | Which `×` is x and which multiplies, what a definition is, x taking the value given nearest above, `x = x + 1`, an x used before it has a value, and every sum below answered again when x changes                                                                                                                                                                |
 | Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                                                                                                                                                                                                                    |
 | Answer overlay        | 34    | What is written after the "=" or under a rule and how dark, the dotted line under a doubted symbol, the note for a line that makes no sense, that no question mark is ever drawn, and that the answer follows a line written at an angle, and that an answer goes with its sum while the lasso drags it and stays at the drop until the sum is read again         |
 | Tool sizes            | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                                                                                                                                                                                                                  |
@@ -1042,6 +1071,9 @@ recognition would fail the build.
   long division and expressions that wrap are out of scope. In a column, carries or working
   written among the rows would be read as part of them.
 - **No parentheses.** The parser handles them; the model has no class for them.
+- **One variable, `x`, and no implied multiplication.** The model has no letters; `x` is a `×`
+  standing where a number belongs. `3x` must be written `3 × x`, and an `x` written as two curves
+  back to back, `)(`, is taken for two symbols.
 - **A dot is only ever a decimal point.** A stray speck low on the line will be read as one.
 - **The answer does not avoid ink.** It is drawn to the right of the `=`, or below the line when
   it would run off the page; it does not check for other writing there.

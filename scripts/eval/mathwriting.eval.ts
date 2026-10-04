@@ -58,8 +58,10 @@ describe.skipIf(!existsSync(FILE))(
   () => {
     it('reads them', { timeout: 1_800_000 }, async () => {
       const inks = parseRecords(await readFile(FILE, 'utf8'));
-      const symbols = inks.filter((ink) => ink.kind === 'symbol');
-      const expressions = inks.filter((ink) => ink.kind === 'expression');
+      // Inks with the variable x are measured on their own, in section 4.
+      const hasX = (ink: { label: string }): boolean => ink.label.includes('x');
+      const symbols = inks.filter((ink) => ink.kind === 'symbol' && !hasX(ink));
+      const expressions = inks.filter((ink) => ink.kind === 'expression' && !hasX(ink));
       const report: string[] = [
         `${FILE}: ${expressions.length} expressions and ${symbols.length} single symbols,`,
         `written at ${SIZE} px with a ${PEN} px pen. None of these writers' inks were used to`,
@@ -177,6 +179,47 @@ describe.skipIf(!existsSync(FILE))(
         else count(divisionFailures, `÷ read as ${read[k]}`);
       }
 
+      // 4. The variable x. The model has no letters, so an x is right when the model reads
+      // it as "×": at the start of a line or after an operator, that is read as x. Writing
+      // "3x" for 3 × x is not understood, so expressions that do are left out.
+      const loneX = inks.filter((ink) => ink.kind === 'symbol' && ink.label === 'x');
+      const xLines = loneX
+        .map((ink) => segmentLine(toStrokes(ink, SIZE, PEN)))
+        .filter((line) => line.symbols.length === 1);
+      await classifyAll(
+        xLines.map((line) => line.symbols[0]),
+        cache,
+      );
+      const loneRead = xLines.filter(
+        (line) => interpret(line.symbols[0], line, cache.get(line.symbols[0].key)).symbol === '×',
+      ).length;
+      const xExpressions = inks.filter((ink) => ink.kind === 'expression' && hasX(ink));
+      const usable = xExpressions.filter((ink) => !/[\d.]x/.test(ink.label));
+      const xPages = usable.map((ink) => layoutPage(toStrokes(ink, SIZE, PEN)));
+      await classifyAll(
+        xPages
+          .flatMap((lines) => lines.flatMap((line) => line.symbols))
+          .filter((s) => s.kind === 'shape'),
+        cache,
+      );
+      let xExact = 0;
+      let xSeen = 0;
+      let xRead = 0;
+      const xExamples: string[] = [];
+      usable.forEach((ink, i) => {
+        const lines = xPages[i];
+        if (lines.length !== 1) return;
+        const read = readEquation({ id: i, version: 1, line: lines[0] }, cache).expression;
+        if (read === ink.label) xExact++;
+        else if (xExamples.length < 10) xExamples.push(`  ${ink.label.padEnd(22)} read as ${read}`);
+        if (read.length !== ink.label.length) return;
+        [...ink.label].forEach((written, k) => {
+          if (written !== 'x') return;
+          xSeen++;
+          if (read[k] === 'x') xRead++;
+        });
+      });
+
       const table = (rows: Map<string, Tally>, heading: string): string[] => {
         const lines = [heading, '  symbol      n   read right'];
         let n = 0;
@@ -224,6 +267,13 @@ describe.skipIf(!existsSync(FILE))(
         `  whole expression read right: ${divisionExact}/${trials.length} = ${pct(divisionExact, trials.length)}`,
         ...top(divisionFailures),
         ...divisionExamples,
+        '',
+        `The variable x: ${loneX.length} written on their own, ${xExpressions.length} expressions using it`,
+        `  a lone x read as "×", which is x at the start of a line: ${loneRead}/${loneX.length} = ${pct(loneRead, loneX.length)}`,
+        `  expressions without "3x" for 3 × x: ${usable.length}`,
+        `    read exactly right: ${xExact}/${usable.length} = ${pct(xExact, usable.length)}`,
+        `    each x read as x, in those grouped right: ${xRead}/${xSeen} = ${pct(xRead, xSeen)}`,
+        ...xExamples,
       );
 
       const text = report.join('\n');
