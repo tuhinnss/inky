@@ -44,9 +44,8 @@ function element<K extends keyof HTMLElementTagNameMap>(
  * would need hundreds of megabytes on a tablet.
  *
  * A page is added by pressing the "+", or by carrying on scrolling once it is in view: the
- * ring around it fills as you pull, and the page arrives when it is full. A page is only
- * added after one that has writing on it, so a fast spin of the wheel cannot stack up
- * blank pages.
+ * ring around it fills as you pull, and the page arrives when it is full. There is no
+ * limit: blank pages can follow one another.
  */
 export class PageStack {
   /** The scrolling element. Strokes are in the coordinates of its content. */
@@ -58,7 +57,6 @@ export class PageStack {
 
   private pages: Pages = { height: 0, count: 1 };
   private strokes: readonly Stroke[] = [];
-  private lastBlank = true;
   private pull = 0;
   private pullTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -87,6 +85,7 @@ export class PageStack {
     this.addButton.addEventListener('click', () => this.addPage(), { signal });
 
     const note = element('span', 'add-page-note');
+    note.textContent = 'New page';
     this.end = element('div', 'page-end');
     this.end.append(this.addButton, note);
 
@@ -139,8 +138,7 @@ export class PageStack {
   }
 
   /**
-   * Tells the stack what is written. There are always enough pages for the ink, and the
-   * "+" is offered only below a page with writing on it.
+   * Tells the stack what is written, so that there are always enough pages for the ink.
    */
   setInk(strokes: readonly Stroke[]): void {
     this.strokes = strokes;
@@ -151,8 +149,6 @@ export class PageStack {
       this.pages = { ...this.pages, count: needed };
       this.render();
     }
-    this.lastBlank = !strokes.some((s) => pagesFor(this.pages, topOf(s)) === this.pages.count);
-    this.showEnd();
   }
 
   /** Drops the pages after the last one with writing on it. For clearing the notebook. */
@@ -167,19 +163,15 @@ export class PageStack {
     this.setInk(this.strokes);
   }
 
-  /** Adds a page after the last and scrolls to it. Does nothing below a blank page. */
-  addPage(): boolean {
+  /** Adds a page after the last and scrolls to it. */
+  addPage(): void {
     this.releasePull();
-    if (this.lastBlank) return false;
     this.pages = { ...this.pages, count: this.pages.count + 1 };
     this.render();
-    this.lastBlank = true;
-    this.showEnd();
     this.element.scrollTo({
       top: pageTop(this.pages, this.pages.count - 1),
       behavior: this.reducedMotion ? 'auto' : 'smooth',
     });
-    return true;
   }
 
   destroy(): void {
@@ -221,13 +213,6 @@ export class PageStack {
     while (this.sheets.length > this.pages.count) this.sheets.pop()!.remove();
   }
 
-  private showEnd(): void {
-    this.end.dataset.blank = String(this.lastBlank);
-    this.addButton.disabled = this.lastBlank;
-    const note = this.end.querySelector('.add-page-note')!;
-    note.textContent = this.lastBlank ? 'Write on this page first' : 'New page';
-  }
-
   private readonly onScrolled = (): void => {
     const top = this.element.scrollTop;
     if (!this.atEnd()) this.releasePull();
@@ -246,7 +231,7 @@ export class PageStack {
   }
 
   private pullBy(distance: number): void {
-    if (this.lastBlank || distance <= 0) return;
+    if (distance <= 0) return;
     this.pull += distance;
     if (this.pull >= PULL_TO_ADD) {
       this.addPage();

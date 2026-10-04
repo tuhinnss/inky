@@ -568,9 +568,9 @@ lines like any others.
 - **A new page.** Below the last page is a "+". Press it, or carry on scrolling past it: at the
   end there is nothing left to scroll, so the wheel or the fingers pull on it instead. A ring
   around the "+" fills as you pull, and empties again if you stop. When it is full, a page is
-  added and the view glides to its top. A page is added only after one with writing on it, so a
-  fast spin of the wheel cannot stack up blank pages; under a blank page the "+" is faint and
-  says to write on it first.
+  added and the view glides to its top. There is no limit, and blank pages may follow one
+  another. A fast spin of the wheel adds at most one page per turn of the ring: after each, the
+  view glides back to the top of the new page, a page away from the end.
 - **How tall.** A page starts as tall as the window, rounded up to whole squares so that every
   page starts on a ruling line. While there is one page it follows the window. Once there is a
   second it keeps its height, since changing it would move the break between the two under the

@@ -457,14 +457,6 @@
   stroke-width: 2;
 }
 
-.page-end[data-blank='true'] {
-  color: color-mix(in srgb, var(--graphite) 55%, transparent);
-}
-
-.page-end[data-blank='true'] .add-page {
-  cursor: default;
-}
-
 .hint {
   position: absolute;
   top: calc(var(--grid) * 2 - 6px);
