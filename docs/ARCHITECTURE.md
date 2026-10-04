@@ -392,7 +392,9 @@ Dots are handled separately, because overlap gives the wrong answer for them in 
 - A decimal point written under the overhang of a `7` overlaps it horizontally but is not part of
   it. So a mark no larger than 22% of the line height is set aside before merging.
 - The dots of `÷` overlap nothing but belong to their bar. So a dot directly above or below a
-  lone flat stroke is attached to it, at most one on each side.
+  lone flat stroke is attached to it, at most one on each side and at most 1.25 bar widths away.
+  Real writers put the dots up to about a bar's width from the bar, some a little further
+  (section 8).
 - A small mark that is a short dash, at least 2.5 times as wide as tall and 13% of the line height
   long, up in the middle of the line, is not a dot but a minus sign written small. A decimal point
   sits low; a minus never does.
@@ -911,6 +913,8 @@ through the same path as ink on the page: grouping into lines and symbols, recog
 | `×` in context                                   | 100%                   | 100% (19)          |
 | `=` in context                                   | 98.2%                  | 98.2% (57)         |
 | `.` in context                                   | 100%                   | 100% (97)          |
+| `÷` set into real expressions (see below)        | 79.8%                  | **92.6%** (2,010)  |
+| `÷` written on its own                           | 76.7%                  | 83.3% (30)         |
 
 The first measurement showed that the operators were read well, and that most of what went wrong
 was grouping, not reading: a `4` or `9` in two strokes read as two digits, a `5` with a separate
@@ -920,10 +924,21 @@ so they did not trade one kind of handwriting for another. The one reading probl
 operators, a `+` with a short bar read as `1` or `4`, is handled by the crossing rule in section
 5; it changed no other row of the table, and no pen digit.
 
+**`÷` in context.** MathWriting's arithmetic has a single `÷` inside an expression, too few to
+judge. So each of its 30 real handwritten `÷` was set in place of a `+` or `−` that a writer put
+between two numbers, in each of the 67 expressions with one that were read exactly right: 2,010
+lines. The `÷` is scaled to the width of the sign it replaces and centred on it; everything else
+on the line, the size of its operators included, is the writer's own. At first only 79.8% were
+read right. Nearly every failure was one of six `÷` whose dots came loose and were read as
+decimal points, giving `264..-175`. Five of them had a dot a little more than 0.9 bar widths from
+the bar, the limit layout then allowed. With the limit at 1.25 bar widths, 92.6% are read right,
+and no other row changed. Of the two `÷` still failing, one has a dot almost two bar widths below
+its bar and the other is a slash between two dots.
+
 What remains: `+` read as `1` or `4` (3 of 118), one of them a `+` whose bar does not reach the
-stem; an expression broken across two lines (9 of 439); and `÷`, which cannot be judged with one example in context. Written
-large as a lone sign, `÷` came out in two or three pieces 7 times out of 30: with nothing around
-it, there is no line to say how small its dots are. Repeat with `npm run eval:operators`.
+stem; an expression broken across two lines (9 of 439); and a `÷` written large on its own, which
+came out in pieces 5 times out of 30. With nothing around it there is no line to say how small
+its dots are. Repeat with `npm run eval:operators`.
 
 ### Memory
 
@@ -960,28 +975,28 @@ What makes that hold:
 
 ## 9. Tests
 
-674 tests in 32 files, run with Vitest in Node. `npm test` takes about two seconds.
+681 tests in 33 files, run with Vitest in Node. `npm test` takes about two seconds.
 
-| Area                  | Tests | What is covered                                                                                                                                                                                                                                                                                                                                           |
-| --------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Math engine           | 89    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws                                                                                                                                                                                 |
-| Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                                                                                                                                                                                                          |
-| Layout                | 78    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence, telling a turned line from a climbing one and turning it level, joining a 4, 9 or 5 written in two strokes while keeping -1, =1, +1, 01 and 71 apart, and telling a short minus from a decimal point                                                       |
-| Ink                   | 44    | Undo/redo stack behaviour, gesture folding, both erasers, where two strokes cross                                                                                                                                                                                                                                                                         |
-| Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                                                                                                                                                                                                  |
-| Model integration     | 53    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads, lines turned and climbing at up to 30°                                                                                                                                                     |
-| Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                                                                                                                                                                                                           |
-| Geometry fusion       | 30    | Stroke arrangements, fusion weights, the decimal point, a `+` with a short bar told from a `1`, `4`, `5` or `7`                                                                                                                                                                                                                                           |
-| Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                                                                                                                                                                                                       |
-| Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                                                                                                                                                                                                            |
-| Answer overlay        | 34    | What is written after the "=" or under a rule and how dark, the dotted line under a doubted symbol, the note for a line that makes no sense, that no question mark is ever drawn, and that the answer follows a line written at an angle, and that an answer goes with its sum while the lasso drags it and stays at the drop until the sum is read again |
-| Tool sizes            | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                                                                                                                                                                                                          |
-| Tool menus            | 20    | Which press picks a tool up and which opens or closes its menu, the eraser button picking up the eraser used last, the lasso having no menu, and the inks: all different, readable on the paper, never the grey of the answers                                                                                                                            |
-| Pages                 | 15    | Where each page is, the page under a point and none in a gap, how many pages the writing needs, page heights on whole grid squares, and how far the ring around the "+" fills as you pull                                                                                                                                                                 |
-| Lasso                 | 21    | Point in a loop, the loop closing itself, which strokes a loop takes, moving strokes without changing how they look, the box round a selection, and where its Delete button goes                                                                                                                                                                          |
-| Seeing what was read  | 10    | Which symbol's ink a tap is on and not the empty corner of its box, which sum a tap on ink or on an answer points at, taps on a line written at an angle, and how symbols are labelled                                                                                                                                                                    |
-| Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                                                                                                                                                                                          |
-| Evaluation data       | 12    | Reading pen trajectory files and MathWriting inks for the real-handwriting measurements in section 8                                                                                                                                                                                                                                                      |
+| Area                  | Tests | What is covered                                                                                                                                                                                                                                                                                                                                                   |
+| --------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Math engine           | 89    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws                                                                                                                                                                                         |
+| Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                                                                                                                                                                                                                  |
+| Layout                | 83    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence, telling a turned line from a climbing one and turning it level, joining a 4, 9 or 5 written in two strokes while keeping -1, =1, +1, 01 and 71 apart, and telling a short minus from a decimal point, and the dots of a `÷` set a bar's width or more from its bar |
+| Ink                   | 44    | Undo/redo stack behaviour, gesture folding, both erasers, where two strokes cross                                                                                                                                                                                                                                                                                 |
+| Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                                                                                                                                                                                                          |
+| Model integration     | 53    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads, lines turned and climbing at up to 30°                                                                                                                                                             |
+| Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                                                                                                                                                                                                                   |
+| Geometry fusion       | 30    | Stroke arrangements, fusion weights, the decimal point, a `+` with a short bar told from a `1`, `4`, `5` or `7`                                                                                                                                                                                                                                                   |
+| Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                                                                                                                                                                                                               |
+| Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                                                                                                                                                                                                                    |
+| Answer overlay        | 34    | What is written after the "=" or under a rule and how dark, the dotted line under a doubted symbol, the note for a line that makes no sense, that no question mark is ever drawn, and that the answer follows a line written at an angle, and that an answer goes with its sum while the lasso drags it and stays at the drop until the sum is read again         |
+| Tool sizes            | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                                                                                                                                                                                                                  |
+| Tool menus            | 20    | Which press picks a tool up and which opens or closes its menu, the eraser button picking up the eraser used last, the lasso having no menu, and the inks: all different, readable on the paper, never the grey of the answers                                                                                                                                    |
+| Pages                 | 15    | Where each page is, the page under a point and none in a gap, how many pages the writing needs, page heights on whole grid squares, and how far the ring around the "+" fills as you pull                                                                                                                                                                         |
+| Lasso                 | 21    | Point in a loop, the loop closing itself, which strokes a loop takes, moving strokes without changing how they look, the box round a selection, and where its Delete button goes                                                                                                                                                                                  |
+| Seeing what was read  | 10    | Which symbol's ink a tap is on and not the empty corner of its box, which sum a tap on ink or on an answer points at, taps on a line written at an angle, and how symbols are labelled                                                                                                                                                                            |
+| Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                                                                                                                                                                                                  |
+| Evaluation data       | 14    | Reading pen trajectory files and MathWriting inks for the real-handwriting measurements in section 8, and setting one writer's `÷` into another's expression                                                                                                                                                                                                      |
 
 Two choices are worth noting. Layout and recognition are tested with **synthetic handwriting**: a
 fixture that turns a string such as `7.5÷2-60=` into stroke paths with controllable size, spacing
@@ -993,8 +1008,8 @@ recognition would fail the build.
 
 - **About one real digit in thirty is misread.** On pen-written digits from people the models
   have not seen, the whole path reads 96.9% correctly (section 8). A `9` read as `3` is the
-  largest single cause that remains. In real handwritten expressions, operators are read right
-  97% to 100% of the time, and 87% of expressions are read exactly (section 8).
+  largest single cause that remains. In real handwritten expressions, `+ − × =` are read right
+  97% to 100% of the time and `÷` 93%, and 87% of expressions are read exactly (section 8).
 - **A digit written in two strokes that do not overlap can still be split in two.** This happened
   to 30 of 3,498 real digits, mostly `4` and `5`.
 - **Symbols must not overlap horizontally.** Segmentation is by horizontal overlap, so digits

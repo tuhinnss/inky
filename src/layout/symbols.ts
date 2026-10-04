@@ -62,6 +62,11 @@ const DASH_RATIO = 2.5;
 const DASH_LENGTH = 0.13;
 /** Below this fraction of the line's height a small mark is low enough to be a point. */
 const POINT_ZONE = 0.55;
+/**
+ * The dots of a "÷" sit at most this many bar widths above or below its bar. Real
+ * handwriting puts them up to about a bar's width away, and some writers a little more.
+ */
+const DIVISION_REACH = 1.25;
 
 interface Group {
   members: StrokeMetrics[];
@@ -83,7 +88,7 @@ function sideOfBar(dot: StrokeMetrics, bar: StrokeMetrics): 'above' | 'below' | 
   const slack = 0.1 * bar.width;
   const offset = dot.centreY - bar.centreY;
   const overBar = dot.centreX >= bar.minX - slack && dot.centreX <= bar.maxX + slack;
-  if (!overBar || offset === 0 || Math.abs(offset) > 0.9 * bar.width) return null;
+  if (!overBar || offset === 0 || Math.abs(offset) > DIVISION_REACH * bar.width) return null;
   return offset < 0 ? 'above' : 'below';
 }
 
