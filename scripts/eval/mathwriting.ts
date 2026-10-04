@@ -1,7 +1,7 @@
 /**
  * Reading the arithmetic picked out of MathWriting by `prepare_mathwriting.py`.
  */
-import { createStroke, type Stroke } from '../../src/ink';
+import { createStroke, strokeBounds, unionBounds, type Bounds, type Stroke } from '../../src/ink';
 
 export interface MathWritingInk {
   id: string;
@@ -53,6 +53,34 @@ export function toStrokes(ink: MathWritingInk, size: number, pen: number): Strok
     }
     return createStroke(points, pen, '#000');
   });
+}
+
+/**
+ * One writer's sign put in place of another's: `sign` scaled to the width of `into` and
+ * centred on it. "÷" is too rare in MathWriting's arithmetic to measure on its own, so
+ * real ones are set into real expressions where the writer put a "+" or "−". Everything
+ * around the sign, its size on the line included, is still that writer's.
+ */
+export function transplant(sign: readonly Stroke[], into: Bounds): Stroke[] {
+  if (sign.length === 0) return [];
+  const from = sign.map((stroke) => strokeBounds(stroke)).reduce(unionBounds);
+  const scale = (into.maxX - into.minX) / Math.max(from.maxX - from.minX, 1e-6);
+  const fromX = (from.minX + from.maxX) / 2;
+  const fromY = (from.minY + from.maxY) / 2;
+  const toX = (into.minX + into.maxX) / 2;
+  const toY = (into.minY + into.maxY) / 2;
+  return sign.map((stroke) =>
+    createStroke(
+      stroke.points.map((p) => ({
+        ...p,
+        x: toX + (p.x - fromX) * scale,
+        y: toY + (p.y - fromY) * scale,
+      })),
+      stroke.width,
+      stroke.color,
+      stroke.simulatePressure,
+    ),
+  );
 }
 
 /** The kinds of symbol reported on, in the order of the report. */

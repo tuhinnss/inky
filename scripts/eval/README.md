@@ -78,6 +78,11 @@ grouping into lines and symbols, recognition, and reading. The report gives, for
 how often it is read right on its own and inside expressions; how many expressions are read
 exactly right; why the others are not; and the most common confusions.
 
+There is only one `÷` inside an expression in this arithmetic, so the report ends with `÷` in
+context measured another way: each real `÷` from the single symbols is set in place of a `+` or
+`−` between two numbers, in every expression that was read exactly right, scaled to the width of
+the sign it replaces. Everything else on the line is still the writer's.
+
 | Variable           | Default                             | Meaning                                 |
 | ------------------ | ----------------------------------- | --------------------------------------- |
 | `MATHWRITING_FILE` | `data/mathwriting/arithmetic.jsonl` | The file `prepare_mathwriting.py` wrote |
@@ -86,4 +91,4 @@ exactly right; why the others are not; and the most common confusions.
 | `EVAL_REPORT`      |                                     | Also write the report to this file      |
 
 Expected: 86.6% of expressions read exactly right, 91.8% grouped into the right symbols, and 98.1%
-of symbols read right within those.
+of symbols read right within those; `÷` set into expressions read right 92.6% of the time.

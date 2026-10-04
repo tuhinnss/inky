@@ -10,7 +10,7 @@ import { readEquation } from '../../src/app/equations';
 import { layoutPage, segmentLine, type SymbolGroup } from '../../src/layout';
 import { interpret } from '../../src/recognition/interpret';
 import { classify } from '../../tests/recognition/helpers';
-import { SYMBOL_CLASSES, parseRecords, toStrokes } from './mathwriting';
+import { SYMBOL_CLASSES, parseRecords, toStrokes, transplant } from './mathwriting';
 
 const FILE = process.env.MATHWRITING_FILE ?? 'data/mathwriting/arithmetic.jsonl';
 /** Height the writing is brought to, and the pen, as in ordinary use of the app. */
@@ -38,9 +38,13 @@ function count(map: Map<string, number>, key: string): void {
 }
 
 /** Probabilities for every symbol, by key, classified in batches as the worker would. */
-async function classifyAll(symbols: SymbolGroup[]): Promise<Map<string, Float32Array>> {
-  const cache = new Map<string, Float32Array>();
-  const unique = [...new Map(symbols.map((s) => [s.key, s.strokes] as const))];
+async function classifyAll(
+  symbols: SymbolGroup[],
+  cache = new Map<string, Float32Array>(),
+): Promise<Map<string, Float32Array>> {
+  const unique = [
+    ...new Map(symbols.filter((s) => !cache.has(s.key)).map((s) => [s.key, s.strokes] as const)),
+  ];
   for (let i = 0; i < unique.length; i += BATCH) {
     const batch = unique.slice(i, i + BATCH);
     const predictions = await classify(batch.map(([, strokes]) => strokes));
@@ -115,6 +119,64 @@ describe.skipIf(!existsSync(FILE))(
         });
       });
 
+      // 3. "÷" in context. MathWriting's arithmetic has almost none, so each real "÷" from
+      // the single symbols is set in place of a "+" or "−" that a writer put between two
+      // numbers, in every expression that was read exactly right. All else is the writer's.
+      const signs = symbols
+        .filter((ink) => ink.label === '÷')
+        .map((ink) => toStrokes(ink, SIZE, PEN));
+      const trials: Array<{ label: string; lines: ReturnType<typeof layoutPage> }> = [];
+      expressions.forEach((ink, i) => {
+        const lines = pages[i];
+        if (lines.length !== 1 || lines[0].column) return;
+        const line = lines[0];
+        const read = readEquation({ id: i, version: 1, line }, cache).expression;
+        if (read !== ink.label || line.symbols.length !== ink.label.length) return;
+        const k = [...ink.label].findIndex(
+          (c, j) =>
+            (c === '+' || c === '-') &&
+            /\d/.test(ink.label[j - 1] ?? '') &&
+            /\d/.test(ink.label[j + 1] ?? ''),
+        );
+        if (k < 0) return;
+        const replaced = line.symbols[k];
+        const kept = line.symbols.filter((s) => s !== replaced).flatMap((s) => s.strokes);
+        const label = ink.label.slice(0, k) + '÷' + ink.label.slice(k + 1);
+        for (const sign of signs) {
+          trials.push({
+            label,
+            lines: layoutPage([...kept, ...transplant(sign, replaced.bounds)]),
+          });
+        }
+      });
+      await classifyAll(
+        trials
+          .flatMap((t) => t.lines.flatMap((line) => line.symbols))
+          .filter((s) => s.kind === 'shape'),
+        cache,
+      );
+      let divisionExact = 0;
+      let divisionRead = 0;
+      const divisionFailures = new Map<string, number>();
+      const divisionExamples: string[] = [];
+      for (const { label, lines } of trials) {
+        if (lines.length !== 1) {
+          count(divisionFailures, 'split over several lines');
+          continue;
+        }
+        const read = readEquation({ id: 0, version: 1, line: lines[0] }, cache).expression;
+        if (read === label) divisionExact++;
+        else if (divisionExamples.length < 15)
+          divisionExamples.push(`  ${label.padEnd(22)} read as ${read}`);
+        if (read.length !== label.length) {
+          count(divisionFailures, 'the ÷ came apart or joined a neighbour');
+          continue;
+        }
+        const k = label.indexOf('÷');
+        if (read[k] === '÷') divisionRead++;
+        else count(divisionFailures, `÷ read as ${read[k]}`);
+      }
+
       const table = (rows: Map<string, Tally>, heading: string): string[] => {
         const lines = [heading, '  symbol      n   read right'];
         let n = 0;
@@ -155,6 +217,13 @@ describe.skipIf(!existsSync(FILE))(
         '',
         'Some expressions read wrongly:',
         ...examples,
+        '',
+        `÷ in context: ${signs.length} real "÷" each set in place of a "+" or "−" in ${trials.length / Math.max(signs.length, 1)}`,
+        'expressions that were read exactly right:',
+        `  ÷ read as ÷:                ${divisionRead}/${trials.length} = ${pct(divisionRead, trials.length)}`,
+        `  whole expression read right: ${divisionExact}/${trials.length} = ${pct(divisionExact, trials.length)}`,
+        ...top(divisionFailures),
+        ...divisionExamples,
       );
 
       const text = report.join('\n');

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { parseRecords, toStrokes, type MathWritingInk } from '../../scripts/eval/mathwriting';
+import { createStroke } from '../../src/ink';
+import {
+  parseRecords,
+  toStrokes,
+  transplant,
+  type MathWritingInk,
+} from '../../scripts/eval/mathwriting';
 
 const ink = (kind: MathWritingInk['kind'], strokes: number[][]): MathWritingInk => ({
   id: 'x',
@@ -42,5 +48,29 @@ describe('MathWriting inks on a CalcInk page', () => {
   it('reads one ink per line, skipping blank lines', () => {
     const text = `${JSON.stringify(ink('symbol', [[0, 0]]))}\n\n${JSON.stringify(ink('expression', [[0, 0]]))}\n`;
     expect(parseRecords(text).map((r) => r.kind)).toEqual(['symbol', 'expression']);
+  });
+});
+
+describe("setting one writer's sign into another's expression", () => {
+  const at = (x: number, y: number) => ({ x, y, pressure: 0.5 });
+  // A "÷" 20 wide, its dots 15 above and below the bar.
+  const sign = [
+    createStroke([at(0, 0), at(20, 0)], 3, '#000'),
+    createStroke([at(10, -15)], 3, '#000'),
+    createStroke([at(10, 15)], 3, '#000'),
+  ];
+
+  it('scales the sign to the width of the one it replaces and centres it there', () => {
+    const [bar, above, below] = transplant(sign, { minX: 100, maxX: 140, minY: 190, maxY: 210 });
+    expect(bar.points.map((p) => p.x)).toEqual([100, 140]);
+    expect(bar.points[0].y).toBe(200);
+    expect(above.points[0]).toMatchObject({ x: 120, y: 170 });
+    expect(below.points[0]).toMatchObject({ x: 120, y: 230 });
+  });
+
+  it('keeps the pen and makes new strokes', () => {
+    const placed = transplant(sign, { minX: 0, maxX: 10, minY: 0, maxY: 10 });
+    expect(placed.map((s) => s.width)).toEqual([3, 3, 3]);
+    expect(placed.map((s) => s.id)).not.toContain(sign[0].id);
   });
 });
