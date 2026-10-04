@@ -3,9 +3,10 @@
  */
 
 import type { Line } from '../layout';
-import { evaluate, EQUALS, type Evaluation } from '../math';
+import { evaluate, EQUALS, VARIABLE, type Evaluation } from '../math';
 import { interpret, type Reading } from '../recognition/interpret';
 import { assembleColumn } from './columnSum';
+import { definitionOf, readVariables, type Definition } from './variables';
 
 /** Model output per symbol, keyed by `SymbolGroup.key`. */
 export type ProbabilityCache = ReadonlyMap<string, ArrayLike<number>>;
@@ -31,6 +32,8 @@ export interface Equation {
   sources?: number[];
   /** Null until the line ends with "=": there is nothing to answer yet. */
   evaluation: Evaluation | null;
+  /** Set when the line gives x a value, as in "x=10". Lines below then use it. */
+  definition?: Definition;
   /** The weakest reading on the line. An answer is only as sure as its least sure symbol. */
   confidence: number;
 }
@@ -52,8 +55,14 @@ function readLine(
   cache: ProbabilityCache,
 ): Pick<Equation, 'readings' | 'expression' | 'sources'> {
   if (!line.column) {
-    const readings = line.symbols.map((symbol) => interpret(symbol, line, cache.get(symbol.key)));
-    return { readings, expression: readings.map((reading) => reading.symbol).join('') };
+    const interpreted = line.symbols.map((symbol) =>
+      interpret(symbol, line, cache.get(symbol.key)),
+    );
+    const symbols = readVariables(interpreted.map((reading) => reading.symbol));
+    const readings = interpreted.map((reading, i): Reading =>
+      symbols[i] === VARIABLE ? { ...reading, symbol: VARIABLE } : reading,
+    );
+    return { readings, expression: symbols.join('') };
   }
 
   // Each row is read as the line of writing it is, so that a decimal point is judged
@@ -69,31 +78,32 @@ function readLine(
   };
 }
 
+function evaluateSafely(expression: string, values: ReadonlyMap<string, number>): Evaluation {
+  try {
+    return evaluate(expression, values);
+  } catch (error) {
+    // The math engine is written never to throw. This is the backstop that keeps one
+    // bad line from taking the whole page down if that ever proves untrue.
+    return {
+      status: 'error',
+      error: {
+        code: 'unexpected-token',
+        position: 0,
+        message: error instanceof Error ? error.message : 'Could not evaluate this',
+      },
+    };
+  }
+}
+
 /**
  * Reads and evaluates one line. The expression is evaluated only when it ends in "=",
  * which is how the writer says "I am done, work this out". Under a column sum the rule
- * says the same thing.
+ * says the same thing. A line that uses x is evaluated again by `evaluatePage`, which
+ * knows the value x has there.
  */
 export function readEquation(tracked: TrackedLine, cache: ProbabilityCache): Equation {
   const { readings, expression, sources } = readLine(tracked.line, cache);
-
-  let evaluation: Evaluation | null = null;
-  if (expression.endsWith(EQUALS)) {
-    try {
-      evaluation = evaluate(expression);
-    } catch (error) {
-      // The math engine is written never to throw. This is the backstop that keeps one
-      // bad line from taking the whole page down if that ever proves untrue.
-      evaluation = {
-        status: 'error',
-        error: {
-          code: 'unexpected-token',
-          position: 0,
-          message: error instanceof Error ? error.message : 'Could not evaluate this',
-        },
-      };
-    }
-  }
+  const evaluation = expression.endsWith(EQUALS) ? evaluateSafely(expression, new Map()) : null;
 
   return {
     ...tracked,
@@ -103,6 +113,52 @@ export function readEquation(tracked: TrackedLine, cache: ProbabilityCache): Equ
     evaluation,
     confidence: readings.reduce((lowest, reading) => Math.min(lowest, reading.confidence), 1),
   };
+}
+
+/**
+ * Works out every line of the page in reading order, so that each one sees the value of
+ * x given nearest above it. A definition holds from its line down, the way a page is
+ * read; a later one takes over from there, and `x = x + 1` uses the x above it.
+ *
+ * @param equations the page's lines, top to bottom.
+ */
+export function evaluatePage(equations: readonly Equation[]): Equation[] {
+  const values = new Map<string, number>();
+  return equations.map((equation): Equation => {
+    if (equation.line.column) return equation;
+
+    const definition = definitionOf(equation.expression);
+    if (definition) {
+      const evaluation = evaluateSafely(definition.body, values);
+      if (evaluation.status === 'ok') {
+        values.set(definition.name, evaluation.value);
+        return {
+          ...equation,
+          evaluation: null,
+          definition: { name: definition.name, value: evaluation.value },
+        };
+      }
+      // A definition that does not work out leaves x as it was, and what went wrong is
+      // shown under it. Positions are moved from the part after "=" to the whole line.
+      const offset = equation.expression.length - definition.body.length;
+      if (evaluation.status === 'error') {
+        const error = { ...evaluation.error, position: evaluation.error.position + offset };
+        return { ...equation, evaluation: { ...evaluation, error } };
+      }
+      if (evaluation.status === 'undefined') {
+        return {
+          ...equation,
+          evaluation: { ...evaluation, position: evaluation.position + offset },
+        };
+      }
+      return { ...equation, evaluation };
+    }
+
+    if (!equation.expression.endsWith(EQUALS) || !equation.expression.includes(VARIABLE)) {
+      return equation;
+    }
+    return { ...equation, evaluation: evaluateSafely(equation.expression, values) };
+  });
 }
 
 interface Known {

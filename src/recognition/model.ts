@@ -28,8 +28,11 @@ export const MODEL_SYMBOLS = [
 
 export type ModelSymbol = (typeof MODEL_SYMBOLS)[number];
 
-/** Every symbol the app can read. The decimal point comes from geometry, not the model. */
-export type RecognisedSymbol = ModelSymbol | '.';
+/**
+ * Every symbol the app can read. The decimal point comes from geometry, not the model,
+ * and x is a "×" standing where a number belongs (see app/variables.ts).
+ */
+export type RecognisedSymbol = ModelSymbol | '.' | 'x';
 
 export const MODEL = {
   /** Relative to the app's base URL. */

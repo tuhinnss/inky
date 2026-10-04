@@ -8,8 +8,12 @@
 
 export type BinaryOperator = '+' | '-' | '×' | '÷';
 
+/** The one variable a handwritten line can hold. See src/app/variables.ts. */
+export const VARIABLE = 'x';
+
 export type Token =
   | { kind: 'number'; value: number; text: string; position: number }
+  | { kind: 'variable'; name: string; position: number }
   | { kind: 'operator'; operator: BinaryOperator; position: number }
   | { kind: 'paren'; paren: '(' | ')'; position: number };
 
@@ -21,7 +25,8 @@ export type SyntaxErrorCode =
   | 'unexpected-end'
   | 'unexpected-equals'
   | 'unbalanced-paren'
-  | 'unexpected-token';
+  | 'unexpected-token'
+  | 'unknown-variable';
 
 export interface ExpressionError {
   code: SyntaxErrorCode;
@@ -83,6 +88,12 @@ export function tokenize(input: string): TokenizeResult {
         };
       }
       tokens.push({ kind: 'number', value: Number(text), text, position: start });
+      continue;
+    }
+
+    if (char === VARIABLE) {
+      tokens.push({ kind: 'variable', name: char, position: index });
+      index++;
       continue;
     }
 

@@ -49,6 +49,9 @@ appears about a third of a second after you stop writing.
 - Need more room? Scroll to the end, past the last page, and a + appears. Keep scrolling, or press
   it, and a new page is added. On a touchscreen, scroll with two fingers; one finger writes.
 - Erase a number and write another in its place, and the answer updates.
+- Give x a value and use it below: write `x = 10`, then `x × 3 + 2 =` gives 32. A later
+  `x = …` takes over from there down, and `x = x + 1` adds one to the x above it. Write `3 × x`,
+  not `3x`.
 
 Your writing is ink. Everything the notebook works out is drawn in pencil. When it is unsure of a
 symbol it read, the answer is written more faintly and the doubtful symbol gets a dotted line
@@ -134,7 +137,7 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 | `npm run dev`            | Start the dev server                                                                                 |
 | `npm run build`          | Type-check, then build to `dist/`                                                                    |
 | `npm run preview`        | Serve the production build locally                                                                   |
-| `npm test`               | Run the 694 unit and integration tests once                                                          |
+| `npm test`               | Run the 714 unit and integration tests once                                                          |
 | `npm run typecheck`      | Type-check without building                                                                          |
 | `npm run lint`           | Lint the source. Fails on `eval` or `new Function`                                                   |
 | `npm run format`         | Format the source with Prettier                                                                      |

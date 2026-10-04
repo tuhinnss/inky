@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EquationTracker, isReadable, readEquation } from '../../src/app/equations';
+import { EquationTracker, evaluatePage, isReadable, readEquation } from '../../src/app/equations';
 import { layoutPage, segmentLine, type Line } from '../../src/layout';
 import { MODEL_SYMBOLS, type ModelSymbol } from '../../src/recognition/model';
 import { after, ink, inkColumn, strokesOf, type InkSymbol } from '../fixtures/ink';
@@ -88,6 +88,66 @@ describe('reading an equation', () => {
 
     cache.delete(line.symbols[0].key);
     expect(isReadable(line, cache)).toBe(false);
+  });
+});
+
+describe('the variable x on a page', () => {
+  /** The page's lines, top to bottom, each read as if the model got every symbol right. */
+  const page = (...lines: string[]) =>
+    evaluatePage(lines.map((text, i) => ({ ...read(text), id: i + 1 })));
+  const valueOf = (equation: { evaluation: unknown }) =>
+    (equation.evaluation as { value?: number } | null)?.value;
+
+  it('reads a "×" where a number belongs as x', () => {
+    const equation = read('×=10');
+    expect(equation.expression).toBe('x=10');
+    expect(equation.readings[0].symbol).toBe('x');
+  });
+
+  it('uses the value given above', () => {
+    const [definition, sum] = page('×=10', '××3=');
+    expect(definition.definition).toEqual({ name: 'x', value: 10 });
+    expect(definition.evaluation).toBeNull();
+    expect(sum.expression).toBe('x×3=');
+    expect(valueOf(sum)).toBe(30);
+  });
+
+  it('works out a value given as a sum', () => {
+    const [, sum] = page('×=3×4', '××2=');
+    expect(valueOf(sum)).toBe(24);
+  });
+
+  it('says so, pointing at the x, when x is used above where it is given', () => {
+    const [sum] = page('2××=', '×=10');
+    expect(sum.evaluation).toMatchObject({
+      status: 'error',
+      error: { code: 'unknown-variable', position: 2 },
+    });
+  });
+
+  it('lets a later definition take over from where it is written', () => {
+    const [, first, , second] = page('×=10', '××2=', '×=1', '××2=');
+    expect(valueOf(first)).toBe(20);
+    expect(valueOf(second)).toBe(2);
+  });
+
+  it('builds on the value above in "x = x + 1"', () => {
+    const [, , sum] = page('×=10', '×=×+1', '×=');
+    expect(valueOf(sum)).toBe(11);
+  });
+
+  it('points into the line as written when a definition does not work out', () => {
+    const [definition] = page('×=3++2');
+    expect(definition.definition).toBeUndefined();
+    expect(definition.evaluation).toMatchObject({
+      status: 'error',
+      error: { code: 'unexpected-operator', position: 4 },
+    });
+  });
+
+  it('leaves lines without x as they were read', () => {
+    const plain = read('18+4×3=');
+    expect(evaluatePage([plain])[0]).toBe(plain);
   });
 });
 

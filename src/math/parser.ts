@@ -4,7 +4,7 @@
  *   expression := term   (('+' | '-') term)*
  *   term       := unary  (('×' | '÷') unary)*
  *   unary      := '-' unary | primary
- *   primary    := NUMBER | '(' expression ')'
+ *   primary    := NUMBER | VARIABLE | '(' expression ')'
  *
  * One function per grammar rule. Precedence falls out of the nesting: `term` binds
  * tighter than `expression` because `expression` calls `term`, never the reverse.
@@ -17,6 +17,7 @@ import type { BinaryOperator, ExpressionError, Token } from './tokenizer';
 
 export type Node =
   | { type: 'number'; value: number }
+  | { type: 'variable'; name: string; position: number }
   | { type: 'negate'; operand: Node; position: number }
   | { type: 'binary'; operator: BinaryOperator; left: Node; right: Node; position: number };
 
@@ -112,6 +113,11 @@ class Parser {
     if (token.kind === 'number') {
       this.index++;
       return { type: 'number', value: token.value };
+    }
+
+    if (token.kind === 'variable') {
+      this.index++;
+      return { type: 'variable', name: token.name, position: token.position };
     }
 
     if (token.kind === 'paren' && token.paren === '(') {

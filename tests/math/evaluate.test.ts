@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluate, type Evaluation } from '../../src/math';
+import { evaluate, tokenize, type Evaluation } from '../../src/math';
 
 function value(input: string): number {
   const result = evaluate(input);
@@ -286,5 +286,32 @@ describe('result text', () => {
     expect(text('0.1+0.2')).toBe('0.3');
     expect(text('3-10')).toBe('−7');
     expect(text('10÷4')).toBe('2.5');
+  });
+});
+
+describe('the variable x', () => {
+  const x = (value: number) => new Map([['x', value]]);
+
+  it('is read as a token of its own', () => {
+    const result = tokenize('2×x');
+    expect(result.ok && result.tokens[2]).toEqual({ kind: 'variable', name: 'x', position: 2 });
+  });
+
+  it('takes the value it is given', () => {
+    expect(evaluate('x×3=', x(10))).toMatchObject({ status: 'ok', value: 30 });
+    expect(evaluate('2×x+1', x(10))).toMatchObject({ status: 'ok', value: 21 });
+    expect(evaluate('-x', x(4))).toMatchObject({ status: 'ok', value: -4 });
+    expect(evaluate('x=', x(2.5))).toMatchObject({ status: 'ok', text: '2.5' });
+  });
+
+  it('is an error, pointing at the x, when it has no value', () => {
+    expect(evaluate('2×x+1=')).toMatchObject({
+      status: 'error',
+      error: { code: 'unknown-variable', position: 2 },
+    });
+  });
+
+  it('still needs an operator next to a number', () => {
+    expect(errorCode('2x')).toBe('unexpected-token');
   });
 });

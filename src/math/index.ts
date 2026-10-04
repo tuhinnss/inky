@@ -24,12 +24,15 @@ export type Evaluation =
 export const EQUALS = '=';
 
 /**
- * Evaluates an expression such as `"18+4×3"`.
+ * Evaluates an expression such as `"18+4×3"`, or `"x×3"` given a value for x.
  *
  * A single trailing `=` is accepted and ignored, since that is how expressions arrive
  * from the canvas. An `=` anywhere else is an error.
  */
-export function evaluate(input: string): Evaluation {
+export function evaluate(
+  input: string,
+  variables: ReadonlyMap<string, number> = new Map(),
+): Evaluation {
   const source = input.trimEnd();
   const expression = source.endsWith(EQUALS) ? source.slice(0, -1) : source;
 
@@ -39,7 +42,7 @@ export function evaluate(input: string): Evaluation {
   const parsed = parse(tokenized.tokens, expression.length);
   if (!parsed.ok) return { status: 'error', error: parsed.error };
 
-  const result = evaluateNode(parsed.ast);
+  const result = evaluateNode(parsed.ast, variables);
   switch (result.kind) {
     case 'value':
       return { status: 'ok', value: result.value, text: formatNumber(result.value) };
@@ -47,6 +50,15 @@ export function evaluate(input: string): Evaluation {
       return { status: 'undefined', text: 'Undefined', position: result.position };
     case 'overflow':
       return { status: 'overflow', text: 'Too large' };
+    case 'unknown-variable':
+      return {
+        status: 'error',
+        error: {
+          code: 'unknown-variable',
+          position: result.position,
+          message: `Give ${result.name} a value above, as in ${result.name} = 10`,
+        },
+      };
   }
 }
 
@@ -55,6 +67,7 @@ export { parse, type Node, type ParseResult } from './parser';
 export { evaluateNode, type EvaluationResult } from './evaluator';
 export {
   tokenize,
+  VARIABLE,
   type BinaryOperator,
   type ExpressionError,
   type SyntaxErrorCode,

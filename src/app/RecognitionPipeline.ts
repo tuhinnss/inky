@@ -4,6 +4,7 @@ import { MODEL } from '../recognition/model';
 import type { ClassifyResult } from '../recognition/RecognitionClient';
 import {
   EquationTracker,
+  evaluatePage,
   isReadable,
   readEquation,
   type Equation,
@@ -166,7 +167,7 @@ export class RecognitionPipeline {
     const ordered = [...this.equations.values()].sort(
       (a, b) => a.line.bounds.minY - b.line.bounds.minY || a.line.bounds.minX - b.line.bounds.minX,
     );
-    this.options.onUpdate(ordered);
+    this.options.onUpdate(evaluatePage(ordered));
   }
 
   /**

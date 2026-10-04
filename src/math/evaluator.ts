@@ -5,7 +5,9 @@ export type EvaluationResult =
   /** Division by zero. `position` is the index of the "÷" that caused it. */
   | { kind: 'undefined'; position: number }
   /** The true result does not fit in a double. */
-  | { kind: 'overflow' };
+  | { kind: 'overflow' }
+  /** A variable with no value. `position` is the index of the variable. */
+  | { kind: 'unknown-variable'; name: string; position: number };
 
 interface Frame {
   node: Node;
@@ -27,7 +29,10 @@ interface Frame {
  * NaN flow upwards. Otherwise `1 ÷ 0 × 0` would surface as a bare NaN with nothing left
  * to say why.
  */
-export function evaluateNode(root: Node): EvaluationResult {
+export function evaluateNode(
+  root: Node,
+  variables: ReadonlyMap<string, number> = new Map(),
+): EvaluationResult {
   const pending: Frame[] = [{ node: root, operandsReady: false }];
   const values: number[] = [];
 
@@ -37,6 +42,12 @@ export function evaluateNode(root: Node): EvaluationResult {
 
     if (node.type === 'number') {
       value = node.value;
+    } else if (node.type === 'variable') {
+      const known = variables.get(node.name);
+      if (known === undefined) {
+        return { kind: 'unknown-variable', name: node.name, position: node.position };
+      }
+      value = known;
     } else if (!operandsReady) {
       pending.push({ node, operandsReady: true });
       if (node.type === 'negate') {

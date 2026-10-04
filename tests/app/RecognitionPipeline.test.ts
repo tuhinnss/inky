@@ -118,6 +118,26 @@ describe('RecognitionPipeline with the bundled model', () => {
   });
 });
 
+describe('RecognitionPipeline with x', () => {
+  it('answers a sum using the x given above it, and again when x changes', async () => {
+    const { classifier, requests, learn } = manualClassifier();
+    const { write, erase, latest } = harness(classifier);
+    const ten = learn(ink('×=10', { x: 40, y: 40, size: 70 }));
+    write(ten);
+    write(learn(ink('××3=', { x: 40, y: 220, size: 70, seed: 2 })));
+    await settle();
+    requests.shift()!.reply();
+    await vi.waitFor(() => expect(latest()[1]?.evaluation).toMatchObject({ value: 30 }));
+
+    // Write x = 12 instead: the sum below is answered again, though its ink is unchanged.
+    erase(ten);
+    write(learn(ink('×=12', { x: 40, y: 40, size: 70, seed: 4 })));
+    await settle();
+    requests.shift()!.reply();
+    await vi.waitFor(() => expect(latest()[1]?.evaluation).toMatchObject({ value: 36 }));
+  });
+});
+
 describe('RecognitionPipeline', () => {
   it('waits for a quiet period before reading the page', () => {
     vi.useFakeTimers();
