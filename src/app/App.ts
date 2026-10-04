@@ -86,6 +86,7 @@ export class App {
       eraserRadius: this.eraserSize / 2,
       isWritable: (at) => this.pages.isWritable(at),
       scrollBy: (dy) => this.pages.scrollBy(dy),
+      onTap: (at) => this.overlay.toggleReadingsAt(at),
     });
     this.canvas.setTool(this.tool);
 

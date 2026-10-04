@@ -75,6 +75,9 @@ and a hand resting on the screen while you write with a stylus is ignored.
 With the lasso, draw a loop round some writing to select it. Drag the selection to move it, its
 answer with it, or press Delete. Tap elsewhere to let it go.
 
+To see what the notebook read, tap any number or sign of a sum, or its answer. Each symbol is
+labelled with what it was read as; a fainter label means it was unsure. Tap again to hide them.
+
 ## How it works
 
 Ink is kept as vectors from the first pointer event to the last step of recognition.
@@ -129,7 +132,7 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 | `npm run dev`         | Start the dev server                                                                    |
 | `npm run build`       | Type-check, then build to `dist/`                                                       |
 | `npm run preview`     | Serve the production build locally                                                      |
-| `npm test`            | Run the 631 unit and integration tests once                                             |
+| `npm test`            | Run the 641 unit and integration tests once                                             |
 | `npm run typecheck`   | Type-check without building                                                             |
 | `npm run lint`        | Lint the source. Fails on `eval` or `new Function`                                      |
 | `npm run format`      | Format the source with Prettier                                                         |

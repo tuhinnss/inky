@@ -667,6 +667,20 @@ The choices in a menu are real radio buttons, hidden behind the swatches and lab
 keys and screen readers work with them without extra code. Which press does what is a pure
 function, `press` in [`menus.ts`](../src/ui/menus.ts), tested on its own.
 
+### Seeing what was read
+
+A tap on a sum, on the ink of any of its symbols or on its answer, labels every symbol of it with
+the character it was read as, on a slip of highlighter just above. A symbol the notebook was
+unsure of is labelled more faintly, as its answer is. Another tap hides the labels. When an answer
+is wrong, this shows which symbol was misread, so the writer knows which one to write again.
+
+A tap is a press that moves less than 6 px and lifts within 350 ms. It is offered to the sums
+before anything else happens; if it lands on one, it leaves no dot. Only a tap on the ink itself
+counts, within 6 px of a stroke, and not one in the empty part of a symbol's box: a dot written
+beside a 7 is a decimal point and must stay one. A line written at an angle is read in its own
+level frame, so the tap is turned into that frame before it is tested
+([`readings.ts`](../src/ui/readings.ts)). Erasers do not take part; their taps still erase.
+
 ### The lasso
 
 The third tool selects strokes to move or delete ([`selection.ts`](../src/ink/selection.ts)).
@@ -895,7 +909,7 @@ What makes that hold:
 
 ## 9. Tests
 
-631 tests in 28 files, run with Vitest in Node. `npm test` takes about two seconds.
+641 tests in 29 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area                  | Tests | What is covered                                                                                                                                                                                                                                                                                                                                           |
 | --------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -914,6 +928,7 @@ What makes that hold:
 | Tool menus            | 20    | Which press picks a tool up and which opens or closes its menu, the eraser button picking up the eraser used last, the lasso having no menu, and the inks: all different, readable on the paper, never the grey of the answers                                                                                                                            |
 | Pages                 | 15    | Where each page is, the page under a point and none in a gap, how many pages the writing needs, page heights on whole grid squares, and how far the ring around the "+" fills as you pull                                                                                                                                                                 |
 | Lasso                 | 21    | Point in a loop, the loop closing itself, which strokes a loop takes, moving strokes without changing how they look, the box round a selection, and where its Delete button goes                                                                                                                                                                          |
+| Seeing what was read  | 10    | Which symbol's ink a tap is on and not the empty corner of its box, which sum a tap on ink or on an answer points at, taps on a line written at an angle, and how symbols are labelled                                                                                                                                                                    |
 | Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                                                                                                                                                                                          |
 | Evaluation data       | 8     | Reading pen trajectory files for the real-handwriting measurement in section 8                                                                                                                                                                                                                                                                            |
 

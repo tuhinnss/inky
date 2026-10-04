@@ -46,6 +46,11 @@ export interface InkCanvasOptions {
   isWritable?: (at: Position) => boolean;
   /** Scrolls the pages by this many pixels, for a drag with two fingers. */
   scrollBy?: (dy: number) => void;
+  /**
+   * Offered every tap made with the pen or the lasso: a press that barely moved and was
+   * soon lifted. Returning true takes the tap, and it leaves nothing on the page.
+   */
+  onTap?: (at: Position) => boolean;
 }
 
 /** What the pointer that is currently down is doing. */
@@ -65,6 +70,10 @@ interface Gesture {
   edits: EditBuilder;
   /** Lasso: where a drag of the selection began. Absent while a loop is being drawn. */
   grab?: Position;
+  /** Where and when the pointer went down, and the farthest it has gone from there. */
+  start: Position;
+  startedAt: number;
+  travel: number;
   /** Where the pointer is on the screen, in case a second finger turns this into a scroll. */
   clientY: number;
 }
@@ -78,6 +87,9 @@ export const SELECTION_PAD = 6;
 /** A press this close outside the box still takes hold of the selection. */
 const GRAB_PAD = SELECTION_PAD + 8;
 const HIGHLIGHTER = 'rgba(255, 229, 102, 0.8)';
+/** A press that moves less than this and lifts sooner than this is a tap. */
+const TAP_TRAVEL = 6;
+const TAP_MS = 350;
 const LASSO_LINE = 'rgba(28, 43, 110, 0.65)';
 
 /** The box of a stroke's ink, kept: strokes never change, and every redraw asks. */
@@ -123,6 +135,7 @@ export class InkCanvas {
   private readonly pen: PenState = { seen: false, lastActivity: -Infinity };
   private readonly isWritable: (at: Position) => boolean;
   private readonly scrollPages: (dy: number) => void;
+  private readonly onTap: (at: Position) => boolean;
 
   /** The strokes the lasso holds, and the box round their ink. */
   private selection: readonly Stroke[] = [];
@@ -154,6 +167,7 @@ export class InkCanvas {
     this.eraserRadius = options.eraserRadius;
     this.isWritable = options.isWritable ?? (() => true);
     this.scrollPages = options.scrollBy ?? (() => undefined);
+    this.onTap = options.onTap ?? (() => false);
 
     this.ink = new CanvasLayer('layer layer-ink');
     this.live = new CanvasLayer('layer layer-live');
@@ -361,6 +375,9 @@ export class InkCanvas {
       edits: new EditBuilder(),
       clientY: event.clientY,
       grab,
+      start: position,
+      startedAt: performance.now(),
+      travel: 0,
     };
     this.hover = position;
 
@@ -419,6 +436,10 @@ export class InkCanvas {
       else this.erase(this.toPage(sample));
     }
     this.hover = this.toPage(event);
+    gesture.travel = Math.max(
+      gesture.travel,
+      Math.hypot(this.hover.x - gesture.start.x, this.hover.y - gesture.start.y),
+    );
     this.requestFrame('live');
   };
 
@@ -498,6 +519,15 @@ export class InkCanvas {
     if (!gesture) return;
     this.gesture = null;
     if (gesture.pointerType === 'touch') this.hover = null;
+
+    // A tap on something that answers to it, such as a sum asked to show what was read
+    // there, is taken by it instead of leaving a dot. An eraser's tap still erases.
+    const tapped =
+      commit &&
+      !isEraser(gesture.tool) &&
+      gesture.travel < TAP_TRAVEL &&
+      performance.now() - gesture.startedAt < TAP_MS;
+    if (tapped && this.onTap(gesture.start)) commit = false;
 
     if (gesture.tool === 'pen') {
       if (commit && gesture.points.length > 0) {

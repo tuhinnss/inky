@@ -4,6 +4,7 @@ import type { Drag } from '../canvas/InkCanvas';
 import type { Bounds } from '../ink';
 import type { Line } from '../layout';
 import type { Reading } from '../recognition/interpret';
+import { equationAt, labelFor } from './readings';
 
 /** Pencil graphite, as `r, g, b` for use with varying opacity. */
 const GRAPHITE = '74, 78, 87';
@@ -70,6 +71,10 @@ export class AnswerOverlay {
   private readonly reducedMotion: boolean;
   /** Strokes the lasso is dragging. What is written for them is drawn moved with them. */
   private drag: Drag | null = null;
+  /** Sums whose readings are shown, by equation id. */
+  private readonly revealed = new Set<number>();
+  /** Where each answer was last drawn, by equation id, in its line's own frame. */
+  private readonly answerBoxes = new Map<number, Bounds>();
 
   constructor(private readonly layer: CanvasLayer) {
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -102,8 +107,30 @@ export class AnswerOverlay {
       }
     }
     for (const id of this.shown.keys()) if (!present.has(id)) this.shown.delete(id);
+    const alive = new Set(equations.map((equation) => equation.id));
+    for (const id of this.revealed) if (!alive.has(id)) this.revealed.delete(id);
 
     this.requestDraw();
+  }
+
+  /**
+   * A tap on a sum, on the ink of one of its symbols or on its answer, shows what the
+   * notebook read there: each symbol labelled with the character it was taken for. A
+   * second tap hides it again.
+   *
+   * @returns whether the tap was on a sum, and so was taken.
+   */
+  toggleReadingsAt(at: { x: number; y: number }): boolean {
+    const equation = equationAt(this.equations, this.answerBoxes, at);
+    if (!equation) return false;
+    if (!this.revealed.delete(equation.id)) this.revealed.add(equation.id);
+    this.requestDraw();
+    return true;
+  }
+
+  /** Ids of the sums whose readings are shown. */
+  get showingReadings(): ReadonlySet<number> {
+    return this.revealed;
   }
 
   /** Call after the canvas was resized, which cleared it. */
@@ -127,6 +154,7 @@ export class AnswerOverlay {
   private draw(now: number): void {
     const { ctx } = this.layer;
     this.layer.clear();
+    this.answerBoxes.clear();
     let animating = false;
 
     for (const equation of this.equations) {
@@ -143,6 +171,7 @@ export class AnswerOverlay {
       }
 
       this.drawDoubts(ctx, equation);
+      if (this.revealed.has(equation.id)) this.drawReadings(ctx, equation);
       this.drawErrorNote(ctx, equation);
 
       const shown = this.shown.get(equation.id);
@@ -211,6 +240,43 @@ export class AnswerOverlay {
     ctx.fillStyle = `rgba(${GRAPHITE}, ${isNumber ? answerOpacity(equation.confidence) : 0.78})`;
     // Kalam's digits sit a little above the middle of its line box.
     ctx.fillText(text, x, y + size * 0.06);
+    this.answerBoxes.set(equation.id, {
+      minX: x - size * 0.2,
+      minY: y - size * 0.6,
+      maxX: x + width + size * 0.2,
+      maxY: y + size * 0.6,
+    });
+    ctx.restore();
+  }
+
+  /**
+   * What the notebook read, written small above each symbol on a slip of highlighter:
+   * the character it took the symbol for. One it was unsure of is written more faintly,
+   * the same way its answer is.
+   */
+  private drawReadings(ctx: CanvasRenderingContext2D, equation: Equation): void {
+    const { line, readings } = equation;
+    const size = Math.max(14, Math.min(40, line.height * 0.32));
+    ctx.save();
+    ctx.font = font(size);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    line.symbols.forEach((symbol, index) => {
+      const reading = readings[index];
+      // The rule under a column sum is not something anyone wrote as a character.
+      if (!reading || symbol.kind === 'rule') return;
+      const text = labelFor(reading.symbol);
+      const x = (symbol.bounds.minX + symbol.bounds.maxX) / 2;
+      const y = symbol.bounds.minY - size * 0.75;
+      const half = Math.max(size * 0.45, ctx.measureText(text).width / 2 + size * 0.25);
+      ctx.fillStyle = 'rgba(255, 229, 102, 0.55)';
+      ctx.beginPath();
+      ctx.roundRect(x - half, y - size * 0.55, half * 2, size * 1.1, size * 0.2);
+      ctx.fill();
+      const opacity = reading.confidence < LOW_CONFIDENCE ? 0.45 : 0.9;
+      ctx.fillStyle = `rgba(${GRAPHITE}, ${opacity})`;
+      ctx.fillText(text, x, y + size * 0.06);
+    });
     ctx.restore();
   }
 
