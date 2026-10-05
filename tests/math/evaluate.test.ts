@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluate, tokenize, type Evaluation } from '../../src/math';
+import { compile, evaluate, tokenize, type Evaluation } from '../../src/math';
 
 function value(input: string): number {
   const result = evaluate(input);
@@ -311,7 +311,62 @@ describe('the variable x', () => {
     });
   });
 
-  it('still needs an operator next to a number', () => {
-    expect(errorCode('2x')).toBe('unexpected-token');
+  it('is multiplied by a number written against it, as in 2x', () => {
+    expect(evaluate('2x+1', x(10))).toMatchObject({ status: 'ok', value: 21 });
+    expect(evaluate('0.5x', x(10))).toMatchObject({ status: 'ok', value: 5 });
+    expect(evaluate('-3x', x(2))).toMatchObject({ status: 'ok', value: -6 });
+    expect(evaluate('xx', x(3))).toMatchObject({ status: 'ok', value: 9 });
+    expect(evaluate('2xx-1', x(3))).toMatchObject({ status: 'ok', value: 17 });
+  });
+
+  it('binds 2x tighter than a times or division sign, as on paper', () => {
+    expect(evaluate('12÷2x', x(3))).toMatchObject({ status: 'ok', value: 2 });
+    expect(evaluate('3×2x', x(5))).toMatchObject({ status: 'ok', value: 30 });
+  });
+
+  it('still needs an operator between two numbers, and after an x', () => {
+    expect(errorCode('2 3')).toBe('unexpected-token');
+    expect(errorCode('x2')).toBe('unexpected-token');
+  });
+
+  it('points at the x of 2x when x has no value', () => {
+    expect(evaluate('2x=')).toMatchObject({
+      status: 'error',
+      error: { code: 'unknown-variable', position: 1 },
+    });
+  });
+});
+
+describe('compile', () => {
+  it('works an expression in x out at any x', () => {
+    const compiled = compile('2x+1');
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    expect(compiled.at(0)).toBe(1);
+    expect(compiled.at(3)).toBe(7);
+    expect(compiled.at(-0.5)).toBe(0);
+  });
+
+  it('has no value where it divides by zero or overflows', () => {
+    const reciprocal = compile('1÷x');
+    expect(reciprocal.ok && reciprocal.at(0)).toBeNull();
+    expect(reciprocal.ok && reciprocal.at(4)).toBe(0.25);
+    const huge = compile('x×x×x×x×x×x×x×x×x×x');
+    expect(huge.ok && huge.at(1e40)).toBeNull();
+  });
+
+  it('reports a malformed expression once, up front', () => {
+    expect(compile('2x+')).toMatchObject({ ok: false, error: { code: 'unexpected-end' } });
+    expect(compile('')).toMatchObject({ ok: false, error: { code: 'empty' } });
+  });
+
+  it('gives the same values as evaluate', () => {
+    const compiled = compile('3-x×2÷4');
+    for (const value of [-7, -1, 0, 0.3, 12]) {
+      const expected = evaluate('3-x×2÷4', new Map([['x', value]]));
+      expect(compiled.ok && compiled.at(value)).toBe(
+        expected.status === 'ok' ? expected.value : null,
+      );
+    }
   });
 });

@@ -1,14 +1,19 @@
 /**
  * Recursive-descent parser for arithmetic.
  *
- *   expression := term   (('+' | '-') term)*
- *   term       := unary  (('×' | '÷') unary)*
- *   unary      := '-' unary | primary
+ *   expression := term    (('+' | '-') term)*
+ *   term       := unary   (('×' | '÷') unary)*
+ *   unary      := '-' unary | product
+ *   product    := primary VARIABLE*
  *   primary    := NUMBER | VARIABLE | '(' expression ')'
  *
  * One function per grammar rule. Precedence falls out of the nesting: `term` binds
  * tighter than `expression` because `expression` calls `term`, never the reverse.
  * Both loops consume left to right, which is what makes `8 - 3 - 2` equal 3, not 7.
+ *
+ * `product` is multiplication without a sign, as algebra writes it: `2x` is 2 × x. Written
+ * together, a number and its x are one quantity, so they bind tighter than "×" and "÷":
+ * `1 ÷ 2x` divides by 2x, the way it is read on paper.
  *
  * Nothing here throws. Malformed input comes back as a value the caller can render.
  */
@@ -93,7 +98,19 @@ class Parser {
       this.depth--;
       return { type: 'negate', operand, position: token.position };
     }
-    return this.primary();
+    return this.product();
+  }
+
+  private product(): Node {
+    let left = this.primary();
+    for (;;) {
+      const token = this.peek();
+      if (token?.kind !== 'variable') break;
+      this.index++;
+      const right: Node = { type: 'variable', name: token.name, position: token.position };
+      left = { type: 'binary', operator: '×', left, right, position: token.position };
+    }
+    return left;
   }
 
   private primary(): Node {

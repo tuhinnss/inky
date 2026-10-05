@@ -9,7 +9,7 @@
 import { evaluateNode } from './evaluator';
 import { formatNumber } from './format';
 import { parse } from './parser';
-import { tokenize, type ExpressionError } from './tokenizer';
+import { tokenize, VARIABLE, type ExpressionError } from './tokenizer';
 
 export type Evaluation =
   /** A finite answer. `text` is ready to draw. */
@@ -60,6 +60,37 @@ export function evaluate(
         },
       };
   }
+}
+
+/** An expression in x, read once, ready to be worked out at any x. */
+export type Compiled =
+  | {
+      ok: true;
+      /** The value at x, or null where there is none: a division by zero, or overflow. */
+      at(x: number): number | null;
+    }
+  | { ok: false; error: ExpressionError };
+
+/**
+ * Prepares an expression such as `"2x+1"` to be worked out for many values of x, as a
+ * graph needs: it is read and checked once, then only evaluated at each x.
+ */
+export function compile(input: string): Compiled {
+  const tokenized = tokenize(input);
+  if (!tokenized.ok) return { ok: false, error: tokenized.error };
+  const parsed = parse(tokenized.tokens, input.length);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  const { ast } = parsed;
+  // One map, refilled for each x: a graph asks for hundreds of values at a time.
+  const variables = new Map<string, number>();
+  return {
+    ok: true,
+    at(x) {
+      variables.set(VARIABLE, x);
+      const result = evaluateNode(ast, variables);
+      return result.kind === 'value' ? result.value : null;
+    },
+  };
 }
 
 export { formatNumber, MINUS_SIGN } from './format';
