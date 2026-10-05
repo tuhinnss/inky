@@ -9,6 +9,7 @@
  */
 
 import type { Equation } from '../app/equations';
+import { snapSize, type SizeRange } from './sizes';
 
 /** An answer appeared, or a sum turned out not to work. */
 export type Cue = 'answer' | 'problem';
@@ -81,3 +82,21 @@ export const VIBRATION: Readonly<Record<Cue | 'scratch-out', number | number[]>>
   /** A longer buzz as the scribble rubs the writing out. */
   'scratch-out': 25,
 };
+
+/** The volume, in percent, as the slider in the speaker's menu sets it. 0 is silent. */
+export const VOLUME: SizeRange = { min: 0, max: 100, step: 5, initial: 70 };
+
+export function volumeLabel(volume: number): string {
+  return volume === 0 ? 'Off' : `${volume}%`;
+}
+
+/**
+ * The gain for a volume. Ears hear loudness on a roughly logarithmic scale, so a gain in
+ * step with the slider would do nearly all its changing in the first quarter of it.
+ * Squaring spreads the change along the whole slider. At the initial 70% it is about 1:
+ * the sounds as they were tuned.
+ */
+export function volumeGain(volume: number): number {
+  const share = snapSize(VOLUME, volume) / 100;
+  return 2 * share * share;
+}

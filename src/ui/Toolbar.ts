@@ -1,4 +1,5 @@
 import type { Tool } from '../canvas/InkCanvas';
+import { VOLUME, volumeLabel } from './cues';
 import { icons, penSample } from './icons';
 import { INKS } from './inks';
 import { buttonFor, press, type Eraser, type MenuName, type ToolButton } from './menus';
@@ -15,8 +16,11 @@ export interface ToolbarState {
   canUndo: boolean;
   canRedo: boolean;
   canClear: boolean;
-  /** Whether sound and vibration are on. */
-  feedback: boolean;
+  /** In percent; 0 is silent. */
+  volume: number;
+  vibration: boolean;
+  /** Whether the device can vibrate for a web page at all. The switch is hidden if not. */
+  canVibrate: boolean;
 }
 
 export interface ToolbarActions {
@@ -27,7 +31,10 @@ export interface ToolbarActions {
   undo(): void;
   redo(): void;
   clear(): void;
-  setFeedback(on: boolean): void;
+  setVolume(volume: number): void;
+  setVibration(on: boolean): void;
+  /** Plays a sound at the volume set, when the slider is let go. */
+  previewSound(): void;
 }
 
 const ERASERS: ReadonlyArray<{ tool: Eraser; label: string; shortcut: string; icon: string }> = [
@@ -70,7 +77,7 @@ export class Toolbar {
   private readonly undoButton: HTMLButtonElement;
   private readonly redoButton: HTMLButtonElement;
   private readonly clearButton: HTMLButtonElement;
-  private readonly feedbackButton: HTMLButtonElement;
+  private readonly vibrationSwitch: HTMLInputElement;
   private readonly abort = new AbortController();
 
   /** The state last shown. What a press on a tool button does depends on what is in hand. */
@@ -84,8 +91,11 @@ export class Toolbar {
     this.element.setAttribute('aria-label', 'Drawing tools');
 
     const tools = this.group('Tool');
-    this.menus = { pen: this.penMenu(), eraser: this.eraserMenu() };
-    for (const { button, panel } of Object.values(this.menus)) tools.append(button, panel);
+    const sound = this.soundMenu();
+    this.vibrationSwitch = sound.vibration;
+    this.menus = { pen: this.penMenu(), eraser: this.eraserMenu(), sound: sound.menu };
+    tools.append(this.menus.pen.button, this.menus.pen.panel);
+    tools.append(this.menus.eraser.button, this.menus.eraser.panel);
     this.lassoButton = this.button(icons.lasso, 'Lasso: select to move or delete', 'L', () =>
       this.onPress('lasso'),
     );
@@ -98,11 +108,7 @@ export class Toolbar {
     edits.append(this.undoButton, this.redoButton, this.clearButton);
 
     const settings = this.group('Settings');
-    this.feedbackButton = this.button(icons.sound, 'Sound and vibration', '', () =>
-      actions.setFeedback(!this.state?.feedback),
-    );
-    this.feedbackButton.classList.add('tool-switch');
-    settings.append(this.feedbackButton);
+    settings.append(this.menus.sound.button, this.menus.sound.panel);
 
     this.element.append(tools, edits, settings);
 
@@ -121,11 +127,11 @@ export class Toolbar {
     this.state = state;
     const inHand = buttonFor(state.tool);
     for (const [name, { button }] of this.entries()) {
-      button.setAttribute('aria-pressed', String(name === inHand));
+      if (name !== 'sound') button.setAttribute('aria-pressed', String(name === inHand));
     }
     this.lassoButton.setAttribute('aria-pressed', String(inHand === 'lasso'));
     // A menu belongs to the tool in hand. When a key changes the tool, its menu goes too.
-    if (this.open && this.open !== inHand) this.closeMenu();
+    if (this.open && this.open !== 'sound' && this.open !== inHand) this.closeMenu();
 
     this.showSize(this.menus.pen, state.penWidth);
     this.showSize(this.menus.eraser, state.eraserSize);
@@ -141,7 +147,9 @@ export class Toolbar {
     this.undoButton.disabled = !state.canUndo;
     this.redoButton.disabled = !state.canRedo;
     this.clearButton.disabled = !state.canClear;
-    this.showFeedback(state.feedback);
+    this.showVolume(state.volume);
+    this.vibrationSwitch.checked = state.vibration;
+    this.vibrationSwitch.closest('label')!.hidden = !state.canVibrate;
   }
 
   destroy(): void {
@@ -197,6 +205,37 @@ export class Toolbar {
     return this.menu(button, 'Eraser', size, [preview, size.slider, modes]);
   }
 
+  /**
+   * The speaker: the volume, heard as you let go of the slider, and the vibration switch.
+   * Volume 0 is silence, so it needs no mute button of its own.
+   */
+  private soundMenu(): { menu: Menu; vibration: HTMLInputElement } {
+    const button = this.button(icons.sound, 'Sound', '', () =>
+      this.open === 'sound' ? this.closeMenu() : this.openMenu('sound'),
+    );
+    button.title = 'Sound and vibration';
+    const volume = this.sizeControl(
+      'Volume',
+      VOLUME,
+      (value) => this.actions.setVolume(value),
+      'Volume',
+    );
+    volume.slider.addEventListener('change', () => this.actions.previewSound(), {
+      signal: this.abort.signal,
+    });
+
+    const option = element('label', 'menu-switch');
+    option.innerHTML = `${icons.vibration}<span>Vibration</span>`;
+    const vibration = element('input', '');
+    vibration.type = 'checkbox';
+    vibration.addEventListener('change', () => this.actions.setVibration(vibration.checked), {
+      signal: this.abort.signal,
+    });
+    option.prepend(vibration);
+
+    return { menu: this.menu(button, 'Sound', volume, [volume.slider, option]), vibration };
+  }
+
   private menu(
     button: HTMLButtonElement,
     name: string,
@@ -218,6 +257,7 @@ export class Toolbar {
     name: string,
     range: SizeRange,
     onSlide: (size: number) => void,
+    label = `${name} size`,
   ): { head: HTMLElement; slider: HTMLInputElement; value: HTMLElement } {
     const title = element('span', 'size-name');
     title.textContent = name;
@@ -230,7 +270,7 @@ export class Toolbar {
     slider.min = String(range.min);
     slider.max = String(range.max);
     slider.step = String(range.step);
-    slider.setAttribute('aria-label', `${name} size`);
+    slider.setAttribute('aria-label', label);
     slider.addEventListener('input', () => onSlide(Number(slider.value)), {
       signal: this.abort.signal,
     });
@@ -257,14 +297,18 @@ export class Toolbar {
     button.setAttribute('aria-label', `Eraser: ${label.toLowerCase()}`);
   }
 
-  /** The speaker shows what you hear: sound coming out of it, or none. */
-  private showFeedback(on: boolean): void {
-    const button = this.feedbackButton;
-    if (button.dataset.on === String(on)) return;
-    button.dataset.on = String(on);
-    button.innerHTML = on ? icons.sound : icons.muted;
-    button.setAttribute('aria-pressed', String(on));
-    button.title = on ? 'Sound and vibration: on' : 'Sound and vibration: off';
+  /** The speaker shows what you hear: no waves when silent, one when quiet, two when loud. */
+  private showVolume(volume: number): void {
+    const { button, slider, sizeValue } = this.menus.sound;
+    const label = volumeLabel(volume);
+    slider.value = String(volume);
+    slider.setAttribute('aria-valuetext', label);
+    sizeValue.textContent = label;
+    const icon = volume === 0 ? 'muted' : volume < 50 ? 'soundLow' : 'sound';
+    if (button.dataset.icon === icon) return;
+    button.dataset.icon = icon;
+    button.innerHTML = icons[icon];
+    button.setAttribute('aria-label', volume === 0 ? 'Sound: off' : 'Sound');
   }
 
   private onPress(button: ToolButton): void {

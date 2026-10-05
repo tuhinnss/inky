@@ -9,14 +9,16 @@
  * Vibration uses `navigator.vibrate`. Android browsers have it; iPhones and iPads do not,
  * and many tablets have no vibration motor. Where it is missing, nothing happens.
  *
- * Both are switched off together by the speaker button in the margin, and the choice is
- * remembered on this device.
+ * The speaker button in the margin opens a menu with the volume and a vibration switch.
+ * Both are remembered on this device.
  */
 
 import type { Motion } from '../canvas/InkCanvas';
-import { VIBRATION, scratchLevel, type Cue } from './cues';
+import { VIBRATION, VOLUME, scratchLevel, volumeGain, type Cue } from './cues';
+import { snapSize } from './sizes';
 
-const SETTING = 'calcink.feedback';
+const VOLUME_SETTING = 'calcink.volume';
+const VIBRATION_SETTING = 'calcink.vibration';
 
 /** How loud the pencil is at full speed. Quiet: it is a texture, not a signal. */
 const PENCIL_GAIN = 0.11;
@@ -34,18 +36,28 @@ const SUSPEND_AFTER_MS = 4000;
 /** How long the notebook takes to pencil an answer in (see AnswerOverlay). */
 const WRITE_S = 0.26;
 
-/** Whether sound and vibration are on: on unless switched off on this device before. */
-export function loadFeedbackSetting(): boolean {
-  try {
-    return localStorage.getItem(SETTING) !== 'off';
-  } catch {
-    return true; // storage blocked, as in some private windows
-  }
+export interface FeedbackSettings {
+  /** In percent, 0 for silence. */
+  volume: number;
+  vibration: boolean;
 }
 
-function saveFeedbackSetting(on: boolean): void {
+/** The settings last chosen on this device, or the initial ones: some sound, and vibration. */
+export function loadFeedbackSettings(): FeedbackSettings {
+  const settings = { volume: VOLUME.initial, vibration: true };
   try {
-    localStorage.setItem(SETTING, on ? 'on' : 'off');
+    const volume = localStorage.getItem(VOLUME_SETTING);
+    if (volume !== null) settings.volume = snapSize(VOLUME, Number(volume));
+    settings.vibration = localStorage.getItem(VIBRATION_SETTING) !== 'off';
+  } catch {
+    // Storage blocked, as in some private windows.
+  }
+  return settings;
+}
+
+function save(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
   } catch {
     // Not remembered, but it still applies for this visit.
   }
@@ -59,25 +71,52 @@ interface Scratch {
 }
 
 export class Feedback {
-  private on: boolean;
+  private readonly settings: FeedbackSettings;
   private context: AudioContext | null = null;
+  /** Every sound goes through this, which sets the volume. */
+  private master: GainNode | null = null;
   /** Two seconds of paper: white noise with a slow grain, played in a loop. */
   private paper: AudioBuffer | null = null;
   private scratch: Scratch | null = null;
   private suspendTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(on = loadFeedbackSetting()) {
-    this.on = on;
+  constructor(settings: FeedbackSettings = loadFeedbackSettings()) {
+    this.settings = { ...settings, volume: snapSize(VOLUME, settings.volume) };
   }
 
-  get enabled(): boolean {
-    return this.on;
+  get volume(): number {
+    return this.settings.volume;
   }
 
-  setEnabled(on: boolean): void {
-    this.on = on;
-    saveFeedbackSetting(on);
-    if (!on) this.stopScratch();
+  get vibration(): boolean {
+    return this.settings.vibration;
+  }
+
+  /** Whether this browser lets a web page vibrate the device at all. */
+  get canVibrate(): boolean {
+    return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
+  }
+
+  setVolume(volume: number): void {
+    this.settings.volume = snapSize(VOLUME, volume);
+    save(VOLUME_SETTING, String(this.volume));
+    if (this.volume === 0) this.stopScratch();
+    if (this.master && this.context) {
+      this.master.gain.setTargetAtTime(volumeGain(this.volume), this.context.currentTime, 0.02);
+    }
+  }
+
+  setVibration(on: boolean): void {
+    this.settings.vibration = on;
+    save(VIBRATION_SETTING, on ? 'on' : 'off');
+    // Felt at once, so the switch shows what it does.
+    if (on) vibrate(VIBRATION.answer);
+  }
+
+  /** Plays an answer's note at the volume now set, so the slider can be judged by ear. */
+  preview(): void {
+    this.wake();
+    this.play('answer');
   }
 
   /**
@@ -85,7 +124,7 @@ export class Feedback {
    * the page, which counts as a touch, so the audio is ready by the time the pen moves.
    */
   wake(): void {
-    if (!this.on) return;
+    if (this.volume === 0) return;
     clearTimeout(this.suspendTimer);
     if (!this.context) {
       const Context =
@@ -98,21 +137,24 @@ export class Feedback {
         return;
       }
       this.paper = makePaper(this.context);
+      this.master = this.context.createGain();
+      this.master.gain.value = volumeGain(this.volume);
+      this.master.connect(this.context.destination);
     }
     if (this.context.state === 'suspended') void this.context.resume().catch(() => {});
   }
 
   /** The pen or eraser moved at this speed, or lifted (null). */
   move(motion: Motion | null): void {
-    const context = this.context;
     if (!motion) {
       this.stopScratch();
       return;
     }
-    if (!this.on || !context || !this.paper) return;
+    const { context, master, paper } = this;
+    if (this.volume === 0 || !context || !master || !paper) return;
     if (this.scratch?.tool !== motion.tool) {
       this.stopScratch();
-      this.scratch = this.startScratch(context, this.paper, motion.tool);
+      this.scratch = this.startScratch(context, master, paper, motion.tool);
     }
     const full = motion.tool === 'pen' ? PENCIL_GAIN : ERASER_GAIN;
     const level = full * scratchLevel(motion.speed);
@@ -127,21 +169,37 @@ export class Feedback {
 
   /** An answer was written in, or a sum turned out not to work. */
   cue(cue: Cue): void {
-    if (!this.on) return;
-    vibrate(VIBRATION[cue]);
-    const { context, paper } = this;
-    if (!context || !paper || context.state === 'closed') return;
+    if (this.vibration) vibrate(VIBRATION[cue]);
+    this.play(cue);
+  }
+
+  /** A scribble rubbed writing out. Its sound was the scribble itself; this adds the feel. */
+  scratchedOut(): void {
+    if (this.vibration) vibrate(VIBRATION['scratch-out']);
+  }
+
+  destroy(): void {
+    clearTimeout(this.suspendTimer);
+    this.stopScratch();
+    void this.context?.close().catch(() => {});
+    this.context = null;
+    this.master = null;
+  }
+
+  private play(cue: Cue): void {
+    const { context, master, paper } = this;
+    if (this.volume === 0 || !context || !master || !paper || context.state === 'closed') return;
     clearTimeout(this.suspendTimer);
     const play = (): void => {
       const now = context.currentTime;
       if (cue === 'answer') {
         // A soft wooden note, and the pencil writing the answer in as it appears.
-        note(context, 784, now, 0.05);
-        this.pencilStroke(context, paper, now + 0.02, WRITE_S, 0.05);
+        note(context, master, 784, now, 0.05);
+        this.pencilStroke(context, master, paper, now + 0.02, WRITE_S, 0.05);
       } else {
         // Two low notes, falling: something to look at, without a buzzer.
-        note(context, 330, now, 0.05);
-        note(context, 262, now + 0.13, 0.05);
+        note(context, master, 330, now, 0.05);
+        note(context, master, 262, now + 0.13, 0.05);
       }
       this.suspendLater();
     };
@@ -150,19 +208,12 @@ export class Feedback {
     else context.resume().then(play, () => {});
   }
 
-  /** A scribble rubbed writing out. Its sound was the scribble itself; this adds the feel. */
-  scratchedOut(): void {
-    if (this.on) vibrate(VIBRATION['scratch-out']);
-  }
-
-  destroy(): void {
-    clearTimeout(this.suspendTimer);
-    this.stopScratch();
-    void this.context?.close().catch(() => {});
-    this.context = null;
-  }
-
-  private startScratch(context: AudioContext, paper: AudioBuffer, tool: Motion['tool']): Scratch {
+  private startScratch(
+    context: AudioContext,
+    out: AudioNode,
+    paper: AudioBuffer,
+    tool: Motion['tool'],
+  ): Scratch {
     const source = context.createBufferSource();
     source.buffer = paper;
     source.loop = true;
@@ -174,7 +225,7 @@ export class Feedback {
     filter.Q.value = tool === 'pen' ? 0.9 : 0.6;
     const gain = context.createGain();
     gain.gain.value = 0;
-    source.connect(filter).connect(gain).connect(context.destination);
+    source.connect(filter).connect(gain).connect(out);
     source.start(context.currentTime, offset);
     clearTimeout(this.suspendTimer);
     return { tool, source, gain };
@@ -194,6 +245,7 @@ export class Feedback {
   /** The sound of a short line pencilled in: three quick strokes of graphite. */
   private pencilStroke(
     context: AudioContext,
+    out: AudioNode,
     paper: AudioBuffer,
     at: number,
     length: number,
@@ -213,7 +265,7 @@ export class Feedback {
       gain.gain.setTargetAtTime(loudness, start, 0.01);
       gain.gain.setTargetAtTime(0, start + length / strokes / 2, 0.02);
     }
-    source.connect(filter).connect(gain).connect(context.destination);
+    source.connect(filter).connect(gain).connect(out);
     source.start(at, Math.random() * paper.duration * 0.5);
     source.stop(at + length + 0.2);
   }
@@ -236,12 +288,18 @@ function vibrate(pattern: number | number[]): void {
 }
 
 /** A short, soft note like a tap on a wooden block: a pure tone with a quick decay. */
-function note(context: AudioContext, frequency: number, at: number, loudness: number): void {
+function note(
+  context: AudioContext,
+  out: AudioNode,
+  frequency: number,
+  at: number,
+  loudness: number,
+): void {
   const gain = context.createGain();
   gain.gain.setValueAtTime(0, at);
   gain.gain.linearRampToValueAtTime(loudness, at + 0.005);
   gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.35);
-  gain.connect(context.destination);
+  gain.connect(out);
   // The fundamental, and a quieter overtone that gives it the knock of wood.
   for (const [multiple, share] of [
     [1, 1],

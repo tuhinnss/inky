@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Tool } from '../../src/canvas/InkCanvas';
 import { DEFAULT_INK, INKS, inkFor } from '../../src/ui/inks';
-import { buttonFor, press } from '../../src/ui/menus';
+import { buttonFor, press, type MenuName } from '../../src/ui/menus';
 
 describe('which button holds a tool', () => {
   it('gives the pen and the lasso a button each and both erasers one between them', () => {
@@ -67,7 +67,7 @@ describe('pressing a tool button', () => {
 
   it('takes three presses from another tool to the menu and back: pick up, open, close', () => {
     let tool: Tool = 'stroke-eraser';
-    let open: 'pen' | 'eraser' | null = null;
+    let open: MenuName | null = null;
     const seen: string[] = [];
     for (let i = 0; i < 3; i++) {
       const result = press('pen', tool, 'stroke-eraser', open);

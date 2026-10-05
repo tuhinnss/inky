@@ -76,17 +76,7 @@
   transform: rotate(-4deg) scaleX(1);
 }
 
-/* A switch is not a tool in hand: its icon says whether it is on, without the swipe. */
-.tool-switch[aria-pressed='true']::before {
-  transform: rotate(-4deg) scaleX(0);
-}
-
 .tool:hover:not(:disabled, [aria-pressed='true'], [aria-expanded='true'])::before {
-  transform: rotate(-4deg) scaleX(1);
-  opacity: 0.35;
-}
-
-.tool-switch:hover::before {
   transform: rotate(-4deg) scaleX(1);
   opacity: 0.35;
 }
@@ -171,7 +161,8 @@
 /* The radio buttons are real and keep working with the keyboard, but are not seen: the
    swatch or the label around each one is what shows. */
 .swatch input,
-.eraser-mode input {
+.eraser-mode input,
+.menu-switch input {
   position: absolute;
   inset: 0;
   margin: 0;
@@ -227,12 +218,15 @@
 }
 
 .eraser-mode > svg,
-.eraser-mode > span {
+.eraser-mode > span,
+.menu-switch > svg,
+.menu-switch > span {
   position: relative; /* above the highlighter swipe */
 }
 
 /* The chosen one is marked like the tool in hand: a swipe of highlighter. */
-.eraser-mode::before {
+.eraser-mode::before,
+.menu-switch::before {
   content: '';
   position: absolute;
   inset: 4px 2px;
@@ -244,14 +238,32 @@
   transition: transform 140ms ease-out;
 }
 
-.eraser-mode:has(:checked)::before {
+.eraser-mode:has(:checked)::before,
+.menu-switch:has(:checked)::before {
   transform: rotate(-3deg) scaleX(1);
 }
 
-.eraser-mode:has(:focus-visible) {
+.eraser-mode:has(:focus-visible),
+.menu-switch:has(:focus-visible) {
   outline: 2px solid var(--ink);
   outline-offset: -1px;
   border-radius: 6px;
+}
+
+/* An on/off choice in a menu, such as vibration: its icon and name in a row. */
+.menu-switch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.menu-switch[hidden] {
+  display: none;
 }
 
 .size-head {

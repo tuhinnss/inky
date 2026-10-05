@@ -6,8 +6,11 @@ import type { Tool } from '../canvas/InkCanvas';
 
 /** The tool buttons in the margin. Both erasers share one. */
 export type ToolButton = 'pen' | 'eraser' | 'lasso';
-/** The buttons with a menu. The lasso has nothing to set, so it has none. */
-export type MenuName = 'pen' | 'eraser';
+/**
+ * The buttons with a menu. The lasso has nothing to set, so it has none. The speaker is
+ * not a tool: a press on it always opens or closes its menu.
+ */
+export type MenuName = 'pen' | 'eraser' | 'sound';
 export type Eraser = 'stroke-eraser' | 'pixel-eraser';
 
 /** The button that holds a tool. */

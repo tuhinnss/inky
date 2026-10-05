@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Feedback, loadFeedbackSetting } from '../../src/ui/Feedback';
-import { VIBRATION } from '../../src/ui/cues';
+import { Feedback, loadFeedbackSettings } from '../../src/ui/Feedback';
+import { VIBRATION, VOLUME, volumeGain } from '../../src/ui/cues';
 
 /** An audio parameter that records what it was told to do. */
 class FakeParam {
@@ -95,15 +95,33 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('the setting', () => {
-  it('is on until switched off, and remembered', () => {
-    expect(loadFeedbackSetting()).toBe(true);
-    new Feedback().setEnabled(false);
-    expect(loadFeedbackSetting()).toBe(false);
-    expect(new Feedback().enabled).toBe(false);
+/** Sound at the initial volume, and vibration. */
+const ON = { volume: VOLUME.initial, vibration: true };
+
+/** The gain node every sound goes through, made first, and the ones made after it. */
+const master = (context: FakeAudioContext): FakeNode => context.gains[0];
+const sounds = (context: FakeAudioContext): FakeNode[] => context.gains.slice(1);
+
+describe('the settings', () => {
+  it('start with some sound and vibration, and are remembered', () => {
+    expect(loadFeedbackSettings()).toEqual(ON);
+    const feedback = new Feedback();
+    feedback.setVolume(35);
+    feedback.setVibration(false);
+    expect(loadFeedbackSettings()).toEqual({ volume: 35, vibration: false });
+    const again = new Feedback();
+    expect([again.volume, again.vibration]).toEqual([35, false]);
   });
 
-  it('is on when storage is blocked', () => {
+  it('snap the volume to the slider and ignore nonsense', () => {
+    const feedback = new Feedback();
+    feedback.setVolume(250);
+    expect(feedback.volume).toBe(100);
+    stored.set('calcink.volume', 'loud');
+    expect(loadFeedbackSettings().volume).toBe(VOLUME.initial);
+  });
+
+  it('work when storage is blocked', () => {
     vi.stubGlobal('localStorage', {
       getItem: () => {
         throw new Error('blocked');
@@ -112,23 +130,23 @@ describe('the setting', () => {
         throw new Error('blocked');
       },
     });
-    expect(loadFeedbackSetting()).toBe(true);
+    expect(loadFeedbackSettings()).toEqual(ON);
     const feedback = new Feedback();
-    expect(() => feedback.setEnabled(false)).not.toThrow();
-    expect(feedback.enabled).toBe(false);
+    expect(() => feedback.setVolume(0)).not.toThrow();
+    expect(feedback.volume).toBe(0);
   });
 });
 
 describe('Feedback', () => {
   it('makes no sound until the page has been touched', () => {
-    const feedback = new Feedback(true);
+    const feedback = new Feedback(ON);
     feedback.move({ tool: 'pen', speed: 1 });
     feedback.cue('answer');
     expect(FakeAudioContext.made).toHaveLength(0);
   });
 
   it('vibrates for an answer, a problem and a scratch-out', () => {
-    const feedback = new Feedback(true);
+    const feedback = new Feedback(ON);
     feedback.cue('answer');
     feedback.cue('problem');
     feedback.scratchedOut();
@@ -139,35 +157,65 @@ describe('Feedback', () => {
     ]);
   });
 
-  it('is silent and still when switched off', () => {
-    const feedback = new Feedback(false);
+  it('is silent at volume 0, and still vibrates', () => {
+    const feedback = new Feedback({ volume: 0, vibration: true });
     feedback.wake();
     feedback.move({ tool: 'pen', speed: 1 });
     feedback.cue('answer');
-    feedback.scratchedOut();
     expect(FakeAudioContext.made).toHaveLength(0);
+    expect(vibrate).toHaveBeenCalledTimes(1);
+  });
+
+  it('is heard but not felt with vibration off', () => {
+    const feedback = new Feedback({ ...ON, vibration: false });
+    feedback.wake();
+    feedback.cue('answer');
+    feedback.scratchedOut();
     expect(vibrate).not.toHaveBeenCalled();
+    expect(FakeAudioContext.made[0].oscillators).toHaveLength(2);
+  });
+
+  it('taps once when vibration is switched on, to show what it does', () => {
+    const feedback = new Feedback({ ...ON, vibration: false });
+    feedback.setVibration(true);
+    expect(vibrate.mock.calls).toEqual([[VIBRATION.answer]]);
+  });
+
+  it('knows whether the device can vibrate', () => {
+    expect(new Feedback(ON).canVibrate).toBe(true);
+    vi.stubGlobal('navigator', {});
+    expect(new Feedback(ON).canVibrate).toBe(false);
   });
 
   it('survives a browser without vibration or audio', () => {
     vi.stubGlobal('navigator', {});
     vi.stubGlobal('window', {});
-    const feedback = new Feedback(true);
+    const feedback = new Feedback(ON);
     feedback.wake();
     expect(() => {
       feedback.move({ tool: 'pen', speed: 1 });
       feedback.cue('problem');
       feedback.scratchedOut();
+      feedback.preview();
     }).not.toThrow();
   });
 
+  it('plays everything through one volume, and follows the slider', () => {
+    const feedback = new Feedback(ON);
+    feedback.wake();
+    const [context] = FakeAudioContext.made;
+    expect(master(context).gain.value).toBe(volumeGain(VOLUME.initial));
+    feedback.setVolume(30);
+    expect(master(context).gain.targets.at(-1)?.[0]).toBe(volumeGain(30));
+  });
+
   it('plays the pencil louder the faster it moves, and stops when it lifts', () => {
-    const feedback = new Feedback(true);
+    const feedback = new Feedback(ON);
     feedback.wake();
     const [context] = FakeAudioContext.made;
     feedback.move({ tool: 'pen', speed: 0.1 });
     feedback.move({ tool: 'pen', speed: 1 });
-    const scratch = context.gains[0];
+    const [scratch] = sounds(context);
     const levels = scratch.gain.targets.map(([value]) => value).filter((value) => value > 0);
     expect(levels).toHaveLength(2);
     expect(levels[1]).toBeGreaterThan(levels[0]);
@@ -179,16 +227,16 @@ describe('Feedback', () => {
   });
 
   it('plays the eraser through a sound of its own', () => {
-    const feedback = new Feedback(true);
+    const feedback = new Feedback(ON);
     feedback.wake();
     const [context] = FakeAudioContext.made;
     feedback.move({ tool: 'pen', speed: 1 });
     feedback.move({ tool: 'eraser', speed: 1 });
-    expect(context.gains).toHaveLength(2);
+    expect(sounds(context)).toHaveLength(2);
   });
 
   it('plays one note for an answer and two for a problem', () => {
-    const feedback = new Feedback(true);
+    const feedback = new Feedback(ON);
     feedback.wake();
     const [context] = FakeAudioContext.made;
     feedback.cue('answer');
@@ -198,8 +246,15 @@ describe('Feedback', () => {
     expect(context.oscillators).toHaveLength(6);
   });
 
+  it('plays a sample note for the slider, starting the audio if need be', () => {
+    const feedback = new Feedback(ON);
+    feedback.preview();
+    expect(FakeAudioContext.made[0].oscillators).toHaveLength(2);
+    expect(vibrate).not.toHaveBeenCalled();
+  });
+
   it('wakes a sleeping audio context before a cue', async () => {
-    const feedback = new Feedback(true);
+    const feedback = new Feedback(ON);
     feedback.wake();
     const [context] = FakeAudioContext.made;
     context.state = 'suspended';
@@ -210,12 +265,12 @@ describe('Feedback', () => {
     expect(context.oscillators).toHaveLength(2);
   });
 
-  it('stops the pencil when switched off mid-stroke', () => {
-    const feedback = new Feedback(true);
+  it('stops the pencil when the volume goes to 0 mid-stroke', () => {
+    const feedback = new Feedback(ON);
     feedback.wake();
     const [context] = FakeAudioContext.made;
     feedback.move({ tool: 'pen', speed: 1 });
-    feedback.setEnabled(false);
-    expect(context.gains[0].gain.targets.at(-1)?.[0]).toBe(0);
+    feedback.setVolume(0);
+    expect(sounds(context)[0].gain.targets.at(-1)?.[0]).toBe(0);
   });
 });

@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { Equation } from '../../src/app/equations';
 import { evaluate } from '../../src/math';
-import { CueTracker, outcomeOf, scratchLevel } from '../../src/ui/cues';
+import {
+  CueTracker,
+  outcomeOf,
+  scratchLevel,
+  VOLUME,
+  volumeGain,
+  volumeLabel,
+} from '../../src/ui/cues';
 
 /** Just enough of an equation for the cues: its id and what it worked out to. */
 function line(id: number, expression: string): Equation {
@@ -101,5 +108,23 @@ describe('scratchLevel', () => {
 
   it('keeps slow, careful writing audible', () => {
     expect(scratchLevel(0.1)).toBeGreaterThan(0.2);
+  });
+});
+
+describe('the volume', () => {
+  it('is silent at 0 and labelled Off', () => {
+    expect(volumeGain(0)).toBe(0);
+    expect(volumeLabel(0)).toBe('Off');
+    expect(volumeLabel(35)).toBe('35%');
+  });
+
+  it('plays the sounds as tuned at the initial volume', () => {
+    expect(volumeGain(VOLUME.initial)).toBeCloseTo(1, 1);
+  });
+
+  it('changes along the whole slider, not just its start', () => {
+    // A quarter of the way along gives far less than a quarter of full gain.
+    expect(volumeGain(25) / volumeGain(100)).toBeLessThan(0.1);
+    expect(volumeGain(50)).toBeLessThan(volumeGain(75));
   });
 });

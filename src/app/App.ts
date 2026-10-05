@@ -56,12 +56,15 @@ export class App {
       undo: () => this.history.undo(),
       redo: () => this.history.redo(),
       clear: () => this.clear(),
-      setFeedback: (on) => {
-        this.feedback.setEnabled(on);
-        // The press on the button is a touch: the audio can start now.
-        this.feedback.wake();
+      setVolume: (volume) => {
+        this.feedback.setVolume(volume);
         this.refresh();
       },
+      setVibration: (on) => {
+        this.feedback.setVibration(on);
+        this.refresh();
+      },
+      previewSound: () => this.feedback.preview(),
     });
 
     const wordmark = document.createElement('span');
@@ -238,7 +241,9 @@ export class App {
       canUndo: this.history.canUndo,
       canRedo: this.history.canRedo,
       canClear: this.store.size > 0,
-      feedback: this.feedback.enabled,
+      volume: this.feedback.volume,
+      vibration: this.feedback.vibration,
+      canVibrate: this.feedback.canVibrate,
     });
   }
 
