@@ -512,6 +512,7 @@ value is the confidence shown to the user.
 | Two flat strokes, stacked              | `=` × 1                       | × 0.05                |
 | A flat stroke with a dot above / below | `÷` × 1                       | × 0.1                 |
 | A flat and an upright stroke crossing  | `+` × 1, `×` × 1              | × 0.05                |
+| Two diagonal strokes crossing, an X    | `×` × 1, `+` × 0.2            | × 0.05                |
 | Anything else                          | × 1                           | `−` × 0.05, `=` × 0.2 |
 
 The weights are soft on purpose. A weight of 0.05 does not forbid a reading; it means the model
@@ -524,6 +525,14 @@ long stem can look like a `1` or a `4` to the model, and it read 7 of 118 that w
 digit is: a `4` has a bent stroke, so does a `7` with a bar across it, and the bar of a `1` or a
 `5` sits at the end of the other stroke. `×` is spared because a `×` written askew can match too,
 and the model tells `×` from `+` reliably; what it confuses `+` with is digits.
+
+An X is the same idea turned a quarter: two straight strokes leaning opposite ways, each between
+25° and 70° from level, crossing within the middle 60% of both. It is a times sign or the letter
+`x`, which the model reads as `×` nearly always, but now and then as a `1` or a `7`. No digit is
+written that way, and the pen digits bear that out: none of their 3,498 readings changed. On
+MathWriting it reads one more `x` right in expressions (74 of 83, from 73) and changes nothing
+else. Strokes that meet exactly at a point each was sampled at count as crossing, which the
+segment test alone does not see; that put one more lone `+` right (27 of 28, from 26).
 
 One more piece of geometry applies to any symbol: a closed loop in its top half
 ([`loops.ts`](../src/recognition/loops.ts)). Many people write a `9` with a long tail that curls
@@ -584,7 +593,7 @@ reads 5,000 random strings both ways: no sum that worked before changes its answ
 Whether a real handwritten `x` comes out as `×` was measured on MathWriting (section 8), which has
 29 handwritten `x` on their own and 99 expressions that use `x`, 14 of them writing `3x`. Of the
 lone ones, 24 (83%) are read as `×`, and so as `x` at the start of a line. In the expressions
-grouped into the right symbols, 73 of 83 (88%) of the `x` are read as `x`. 69% of the expressions
+grouped into the right symbols, 74 of 83 (89%) of the `x` are read as `x`. 69% of the expressions
 are read exactly: 73% of those without `3x`, and 6 of the 14 with it, which were all read wrong
 before `2x` was understood. Two expressions without `3x` that were read right before no longer
 are: both are `0 = x − 12`, which is now drawn as the graph of `y = x − 12` (see Graphs, below).
@@ -1121,7 +1130,7 @@ its dots are. Repeat with `npm run eval:operators`.
 
 **x and y.** The letters are measured apart from the arithmetic above, which they leave
 unchanged (section 3): a lone `x` is read as `×`, and so as `x`, 83% of the time, and `x` as `x`
-in 88% of expressions; a real `y` at the start of a real `y = …` line gives the right graph 95.8%
+in 89% of expressions; a real `y` at the start of a real `y = …` line gives the right graph 95.8%
 of the time, and 3 of 604 expressions that are not graphs are taken for one.
 
 ### Memory
@@ -1159,7 +1168,7 @@ What makes that hold:
 
 ## 9. Tests
 
-816 tests in 40 files, run with Vitest in Node. `npm test` takes about two seconds.
+822 tests in 40 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area                  | Tests | What is covered                                                                                                                                                                                                                                                                                                                                                                                                |
 | --------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1170,7 +1179,7 @@ What makes that hold:
 | Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                                                                                                                                                                                                                                                       |
 | Model integration     | 53    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads, lines turned and climbing at up to 30°                                                                                                                                                                                                          |
 | Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                                                                                                                                                                                                                                                                |
-| Geometry fusion       | 43    | Stroke arrangements, fusion weights, the decimal point, a `+` with a short bar told from a `1`, `4`, `5` or `7`, and the closed loop at the top of a `9`, but not of a `2`, `3`, `6` or `7`                                                                                                                                                                                                                    |
+| Geometry fusion       | 49    | Stroke arrangements, fusion weights, the decimal point, a `+` with a short bar told from a `1`, `4`, `5` or `7`, an X told from a `y`, from strokes leaning the same way and from a bent stroke, and the closed loop at the top of a `9`, but not of a `2`, `3`, `6` or `7`                                                                                                                                    |
 | Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                                                                                                                                                                                                                                                            |
 | Variables             | 20    | Which `×` is x and which multiplies, the x of `2x` before `+`, `÷`, `=` or the end, and before `−` only in a graph, what a definition is, x taking the value given nearest above, `x = x + 1`, an x used before it has a value, every sum below answered again when x changes, and a property test that no sum that worked before changes its answer                                                           |
 | Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                                                                                                                                                                                                                                                                 |

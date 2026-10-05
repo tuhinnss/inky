@@ -99,6 +99,6 @@ how many other expressions are taken for a graph when they are not.
 
 Expected: 86.6% of expressions read exactly right, 91.8% grouped into the right symbols, and 98.1%
 of symbols read right within those; `÷` set into expressions read right 92.6% of the time; a lone
-x read as `×` 82.8% of the time, and x read as x in 88.0% of expressions grouped right; a lone y
+x read as `×` 82.8% of the time, and x read as x in 89.2% of expressions grouped right; a lone y
 read as `×` 5.1% of the time, 2 of the 4 real graph lines read right, real y set into them read
 as the right graph 95.8% of the time, and 3 of 604 other expressions taken for a graph.

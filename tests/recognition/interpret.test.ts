@@ -23,7 +23,7 @@ describe('recognising stroke arrangements', () => {
     ['2=3', 'stacked-bars'],
     ['2÷3', 'bar-with-dots'],
     ['2+3', 'cross'],
-    ['2×3', 'other'],
+    ['2×3', 'diagonal-cross'],
     ['283', 'other'],
     ['213', 'other'],
   ] as const)('classifies the middle symbol of "%s" as %s', (text, shape) => {
@@ -96,6 +96,45 @@ describe('a cross', () => {
   });
 });
 
+describe('an X', () => {
+  const shapeOfPair = (a: Stroke, b: Stroke) => {
+    const line = segmentLine([stroke([20, 100], [20, 180]), a, b, stroke([400, 100], [400, 180])]);
+    const symbol = line.symbols.find((s) => s.strokes.includes(a))!;
+    expect(symbol.strokes).toContain(b);
+    return shapeOf(symbol, line);
+  };
+
+  it('is two straight strokes leaning opposite ways, crossing in the middle', () => {
+    expect(shapeOfPair(stroke([100, 120], [140, 170]), stroke([140, 120], [100, 170]))).toBe(
+      'diagonal-cross',
+    );
+  });
+
+  it('is the same drawn either way round, and a little uneven', () => {
+    expect(shapeOfPair(stroke([138, 168], [102, 118]), stroke([98, 165], [135, 125]))).toBe(
+      'diagonal-cross',
+    );
+  });
+
+  it('is not two strokes leaning the same way', () => {
+    expect(shapeOfPair(stroke([100, 120], [140, 170]), stroke([105, 125], [130, 175]))).toBe(
+      'other',
+    );
+  });
+
+  it('is not a "y", whose short arm ends on the long one', () => {
+    expect(shapeOfPair(stroke([100, 120], [120, 150]), stroke([140, 120], [100, 180]))).toBe(
+      'other',
+    );
+  });
+
+  it('is not a stroke that bends, as a "7" or a "4" has', () => {
+    expect(
+      shapeOfPair(stroke([100, 120], [140, 120], [100, 170]), stroke([100, 145], [140, 170])),
+    ).toBe('other');
+  });
+});
+
 describe('fusing model output with geometry', () => {
   it('leaves a confident, consistent reading alone', () => {
     const reading = fuse(probabilities({ '7': 0.98 }), 'other');
@@ -143,6 +182,11 @@ describe('fusing model output with geometry', () => {
 
   it('leaves a "×" written askew to the model', () => {
     expect(fuse(probabilities({ '×': 0.44, '7': 0.38, '+': 0.18 }), 'cross').symbol).toBe('×');
+  });
+
+  it('reads an X as "×" when the model leans to "1" or "7"', () => {
+    expect(fuse(probabilities({ '7': 0.6, '×': 0.3 }), 'diagonal-cross').symbol).toBe('×');
+    expect(fuse(probabilities({ '1': 0.7, '×': 0.21 }), 'diagonal-cross').symbol).toBe('×');
   });
 
   it('leaves a digit the model is sure of alone, even if it looks like a cross', () => {

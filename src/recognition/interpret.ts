@@ -15,7 +15,7 @@
  * exception is the decimal point, which geometry decides alone (see ARCHITECTURE.md).
  */
 
-import { crossingPoint, distance, pathLength, type Stroke } from '../ink';
+import { crossingPoint, distance, distanceToSegment, pathLength, type Stroke } from '../ink';
 import { isFlat, measure, type Line, type StrokeMetrics, type SymbolGroup } from '../layout';
 import { hasLoopAtTop } from './loops';
 import { MODEL_SYMBOLS, type ModelSymbol, type RecognisedSymbol } from './model';
@@ -27,7 +27,7 @@ export interface Reading {
 }
 
 /** The stroke arrangements that geometry can recognise by itself. */
-export type Shape = 'bar' | 'stacked-bars' | 'bar-with-dots' | 'cross' | 'other';
+export type Shape = 'bar' | 'stacked-bars' | 'bar-with-dots' | 'cross' | 'diagonal-cross' | 'other';
 
 /** A dot at least this far down the line (0 = top, 1 = baseline) is a decimal point. */
 const DECIMAL_ZONE = 0.55;
@@ -50,6 +50,13 @@ function crossing(a: Stroke, b: Stroke): { x: number; y: number } | null {
     for (let j = 1; j < b.points.length; j++) {
       const at = crossingPoint(a.points[i - 1], a.points[i], b.points[j - 1], b.points[j]);
       if (at) return at;
+    }
+  }
+  // Two strokes can also meet exactly at a point each has, which the test above, made for
+  // lines that pass through one another, does not count. Where they touch, they meet.
+  for (const point of a.points) {
+    for (let j = 1; j < b.points.length; j++) {
+      if (distanceToSegment(point, b.points[j - 1], b.points[j]) < 1e-6) return point;
     }
   }
   return null;
@@ -75,6 +82,49 @@ function isCross(strokes: readonly StrokeMetrics[]): boolean {
   return inMiddle(along) && inMiddle(down);
 }
 
+/** The strokes of an X lean between these angles from level, in degrees. */
+const DIAGONAL = [25, 70] as const;
+/** An X's strokes cross within this middle part of each: away from their ends. */
+const X_MARGIN = 0.2;
+
+/** How steeply a stroke runs from its first point to its last, in degrees from level. */
+function slant(stroke: Stroke): number {
+  const a = stroke.points[0];
+  const b = stroke.points[stroke.points.length - 1];
+  return (Math.atan2(Math.abs(b.y - a.y), Math.abs(b.x - a.x)) * 180) / Math.PI;
+}
+
+/** Whether a stroke runs down to the right, "\", rather than up to the right, "/". */
+function fallsToTheRight(stroke: Stroke): boolean {
+  const a = stroke.points[0];
+  const b = stroke.points[stroke.points.length - 1];
+  return (b.x - a.x) * (b.y - a.y) > 0;
+}
+
+/**
+ * Two straight strokes leaning opposite ways and crossing near the middle of both: an X,
+ * which is a times sign or the letter x. The model reads nearly all of them as "×", but now
+ * and then one as a "1" or a "7", and no digit is written this way: a "7" with a bar across
+ * has a bent stroke and a flat one, and a "4" in two strokes has an upright one.
+ */
+function isDiagonalCross(strokes: readonly StrokeMetrics[]): boolean {
+  if (strokes.length !== 2) return false;
+  const [a, b] = strokes;
+  if (!isStraight(a.stroke) || !isStraight(b.stroke)) return false;
+  const diagonal = (m: StrokeMetrics): boolean =>
+    slant(m.stroke) >= DIAGONAL[0] && slant(m.stroke) <= DIAGONAL[1];
+  if (!diagonal(a) || !diagonal(b)) return false;
+  if (fallsToTheRight(a.stroke) === fallsToTheRight(b.stroke)) return false;
+  const at = crossing(a.stroke, b.stroke);
+  if (!at) return false;
+  const inMiddle = (m: StrokeMetrics): boolean => {
+    const across = (at.x - m.minX) / Math.max(m.width, 1e-6);
+    const down = (at.y - m.minY) / Math.max(m.height, 1e-6);
+    return [across, down].every((f) => f >= X_MARGIN && f <= 1 - X_MARGIN);
+  };
+  return inMiddle(a) && inMiddle(b);
+}
+
 export function shapeOf(symbol: SymbolGroup, line: Line): Shape {
   const strokes = symbol.strokes.map(measure);
   const isDot = (m: StrokeMetrics): boolean => Math.max(m.width, m.height) <= 0.22 * line.height;
@@ -83,6 +133,7 @@ export function shapeOf(symbol: SymbolGroup, line: Line): Shape {
   const rest = strokes.length - bars.length - dots.length;
 
   if (isCross(strokes)) return 'cross';
+  if (isDiagonalCross(strokes)) return 'diagonal-cross';
   if (rest > 0) return 'other';
   if (bars.length === 1 && dots.length === 0) return 'bar';
   if (bars.length === 2 && dots.length === 0) return 'stacked-bars';
@@ -105,6 +156,9 @@ const SHAPE_WEIGHTS: Readonly<Record<Shape, Partial<Record<ModelSymbol, number>>
   // A flat and an upright stroke crossing in the middle are a plus sign. A "×" written
   // askew can look the same, and the model tells those two apart well, so it is spared.
   cross: { '+': 1, '×': 1 },
+  // Two straight strokes leaning opposite ways, crossing in the middle: an X, a times sign
+  // or the letter x. A "+" turned askew is the nearest thing to it.
+  'diagonal-cross': { '×': 1, '+': 0.2 },
   // Anything else cannot be a symbol that consists only of flat strokes.
   other: { '-': 0.05, '=': 0.2 },
 };
@@ -115,6 +169,7 @@ const DEFAULT_WEIGHT: Readonly<Record<Shape, number>> = {
   'stacked-bars': 0.05,
   'bar-with-dots': 0.1,
   cross: 0.05,
+  'diagonal-cross': 0.05,
   other: 1,
 };
 
