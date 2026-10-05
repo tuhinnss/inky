@@ -81,10 +81,14 @@ exactly right; why the others are not; and the most common confusions.
 There is only one `÷` inside an expression in this arithmetic, so the report ends with `÷` in
 context measured another way: each real `÷` from the single symbols is set in place of a `+` or
 `−` between two numbers, in every expression that was read exactly right, scaled to the width of
-the sign it replaces. Everything else on the line is still the writer's. Inks that use the variable
-x are measured last, apart from the rest: how often a handwritten x is read as `×`, which is x where
-a number belongs, and how often it is read as x inside expressions. Expressions that write `3x` for
-`3 × x` are left out, since CalcInk does not read that.
+the sign it replaces. Everything else on the line is still the writer's.
+
+Inks that use the letters x and y are measured last, apart from the rest. For x: how often a
+handwritten x is read as `×`, which is x where a number belongs, and how often it is read as x
+inside expressions, with and without `3x` for `3 × x`. For graphs: how often a lone y is read as
+`×`, the one reading that could take it for x; how many real `y = …` lines using x are read as the
+right graph; each real lone y set at the start of those lines, in place of the writer's own; and
+how many other expressions are taken for a graph when they are not.
 
 | Variable           | Default                             | Meaning                                 |
 | ------------------ | ----------------------------------- | --------------------------------------- |
@@ -95,4 +99,6 @@ a number belongs, and how often it is read as x inside expressions. Expressions 
 
 Expected: 86.6% of expressions read exactly right, 91.8% grouped into the right symbols, and 98.1%
 of symbols read right within those; `÷` set into expressions read right 92.6% of the time; a lone
-x read as `×` 82.8% of the time, and x read as x in 91.4% of expressions grouped right.
+x read as `×` 82.8% of the time, and x read as x in 88.0% of expressions grouped right; a lone y
+read as `×` 5.1% of the time, 2 of the 4 real graph lines read right, real y set into them read
+as the right graph 95.8% of the time, and 3 of 604 other expressions taken for a graph.

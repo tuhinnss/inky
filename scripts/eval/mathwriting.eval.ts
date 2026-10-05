@@ -6,7 +6,7 @@
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { readEquation } from '../../src/app/equations';
+import { evaluatePage, readEquation, type Equation } from '../../src/app/equations';
 import { isScribble } from '../../src/ink';
 import { layoutPage, segmentLine, type SymbolGroup } from '../../src/layout';
 import { interpret } from '../../src/recognition/interpret';
@@ -59,10 +59,12 @@ describe.skipIf(!existsSync(FILE))(
   () => {
     it('reads them', { timeout: 1_800_000 }, async () => {
       const inks = parseRecords(await readFile(FILE, 'utf8'));
-      // Inks with the variable x are measured on their own, in section 4.
+      // Inks with the letters x and y are measured on their own, in sections 4 and 5.
       const hasX = (ink: { label: string }): boolean => ink.label.includes('x');
-      const symbols = inks.filter((ink) => ink.kind === 'symbol' && !hasX(ink));
-      const expressions = inks.filter((ink) => ink.kind === 'expression' && !hasX(ink));
+      const hasY = (ink: { label: string }): boolean => ink.label.includes('y');
+      const hasLetter = (ink: { label: string }): boolean => hasX(ink) || hasY(ink);
+      const symbols = inks.filter((ink) => ink.kind === 'symbol' && !hasLetter(ink));
+      const expressions = inks.filter((ink) => ink.kind === 'expression' && !hasLetter(ink));
       const report: string[] = [
         `${FILE}: ${expressions.length} expressions and ${symbols.length} single symbols,`,
         `written at ${SIZE} px with a ${PEN} px pen. None of these writers' inks were used to`,
@@ -181,8 +183,8 @@ describe.skipIf(!existsSync(FILE))(
       }
 
       // 4. The variable x. The model has no letters, so an x is right when the model reads
-      // it as "×": at the start of a line or after an operator, that is read as x. Writing
-      // "3x" for 3 × x is not understood, so expressions that do are left out.
+      // it as "×": where a number belongs, or with nothing after it to multiply as in 3x,
+      // that is read as x.
       const loneX = inks.filter((ink) => ink.kind === 'symbol' && ink.label === 'x');
       const xLines = loneX
         .map((ink) => segmentLine(toStrokes(ink, SIZE, PEN)))
@@ -194,31 +196,104 @@ describe.skipIf(!existsSync(FILE))(
       const loneRead = xLines.filter(
         (line) => interpret(line.symbols[0], line, cache.get(line.symbols[0].key)).symbol === '×',
       ).length;
-      const xExpressions = inks.filter((ink) => ink.kind === 'expression' && hasX(ink));
-      const usable = xExpressions.filter((ink) => !/[\d.]x/.test(ink.label));
-      const xPages = usable.map((ink) => layoutPage(toStrokes(ink, SIZE, PEN)));
+      const xExpressions = inks.filter(
+        (ink) => ink.kind === 'expression' && hasX(ink) && !hasY(ink),
+      );
+      /** "3x" or "xx": x multiplied with no sign, read since graphs came in. */
+      const implied = (label: string): boolean => /[\d.x]x/.test(label);
+      const xPages = xExpressions.map((ink) => layoutPage(toStrokes(ink, SIZE, PEN)));
       await classifyAll(
         xPages
           .flatMap((lines) => lines.flatMap((line) => line.symbols))
           .filter((s) => s.kind === 'shape'),
         cache,
       );
-      let xExact = 0;
+      const xExact = { plain: 0, implied: 0 };
+      const xCount = { plain: 0, implied: 0 };
       let xSeen = 0;
       let xRead = 0;
       const xExamples: string[] = [];
-      usable.forEach((ink, i) => {
+      xExpressions.forEach((ink, i) => {
+        const kind = implied(ink.label) ? 'implied' : 'plain';
+        xCount[kind]++;
         const lines = xPages[i];
         if (lines.length !== 1) return;
         const read = readEquation({ id: i, version: 1, line: lines[0] }, cache).expression;
-        if (read === ink.label) xExact++;
-        else if (xExamples.length < 10) xExamples.push(`  ${ink.label.padEnd(22)} read as ${read}`);
+        if (read === ink.label) xExact[kind]++;
+        else if (xExamples.length < 12) xExamples.push(`  ${ink.label.padEnd(22)} read as ${read}`);
         if (read.length !== ink.label.length) return;
         [...ink.label].forEach((written, k) => {
           if (written !== 'x') return;
           xSeen++;
           if (read[k] === 'x') xRead++;
         });
+      });
+
+      // 5. Graphs. A y is read by its place, not its shape: the first symbol of `y = …`, with
+      // x after the "=" and no "=" at the end. Real `y = …` lines are few, so each real y
+      // written on its own is also set in place of the y of each real one read right.
+      const loneY = inks.filter((ink) => ink.label === 'y');
+      const yGlyphs = loneY.map((ink) => toStrokes({ ...ink, kind: 'symbol' }, SIZE, PEN));
+      const yLines = yGlyphs.map((strokes) => segmentLine(strokes));
+      await classifyAll(
+        yLines.filter((line) => line.symbols.length === 1).map((line) => line.symbols[0]),
+        cache,
+      );
+      const yAsTimes = yLines.filter(
+        (line) =>
+          line.symbols.length === 1 &&
+          interpret(line.symbols[0], line, cache.get(line.symbols[0].key)).symbol === '×',
+      ).length;
+      const isGraphLabel = (label: string): boolean =>
+        label.startsWith('y=') && label.slice(2).includes('x') && !label.slice(2).includes('=');
+      const graphInks = inks.filter((ink) => ink.kind === 'expression' && isGraphLabel(ink.label));
+      /** The line read on a page of its own, with x and y read as the page would. */
+      const readPage = (lines: ReturnType<typeof layoutPage>): Equation | null =>
+        lines.length === 1
+          ? evaluatePage([readEquation({ id: 0, version: 1, line: lines[0] }, cache)])[0]
+          : null;
+      const isGraphOf = (equation: Equation | null, label: string): boolean =>
+        equation?.expression === label && equation.graph?.body === label.slice(2);
+      const graphPages = graphInks.map((ink) => layoutPage(toStrokes(ink, SIZE, PEN)));
+      await classifyAll(
+        graphPages
+          .flatMap((lines) => lines.flatMap((line) => line.symbols))
+          .filter((s) => s.kind === 'shape'),
+        cache,
+      );
+      const graphRead = graphInks.filter((ink, i) => isGraphOf(readPage(graphPages[i]), ink.label));
+      const yTrials: Array<{ label: string; lines: ReturnType<typeof layoutPage> }> = [];
+      graphRead.forEach((ink) => {
+        const [line] = layoutPage(toStrokes(ink, SIZE, PEN));
+        const [y, ...rest] = line.symbols;
+        const kept = rest.flatMap((symbol) => symbol.strokes);
+        for (const glyph of yGlyphs) {
+          yTrials.push({
+            label: ink.label,
+            lines: layoutPage([...transplant(glyph, y.bounds), ...kept]),
+          });
+        }
+      });
+      await classifyAll(
+        yTrials
+          .flatMap((t) => t.lines.flatMap((line) => line.symbols))
+          .filter((s) => s.kind === 'shape'),
+        cache,
+      );
+      const yTrialsRead = yTrials.filter((t) => isGraphOf(readPage(t.lines), t.label)).length;
+      // And no line that is not a graph's should be taken for one.
+      const notGraphs = inks.filter((ink) => ink.kind === 'expression' && !isGraphLabel(ink.label));
+      const notGraphPages = notGraphs.map((ink) => layoutPage(toStrokes(ink, SIZE, PEN)));
+      await classifyAll(
+        notGraphPages
+          .flatMap((lines) => lines.flatMap((line) => line.symbols))
+          .filter((s) => s.kind === 'shape'),
+        cache,
+      );
+      const falseGraphs: string[] = [];
+      notGraphs.forEach((ink, i) => {
+        const read = readPage(notGraphPages[i]);
+        if (read?.graph) falseGraphs.push(`  ${ink.label.padEnd(22)} read as ${read.expression}`);
       });
 
       const table = (rows: Map<string, Tally>, heading: string): string[] => {
@@ -271,10 +346,18 @@ describe.skipIf(!existsSync(FILE))(
         '',
         `The variable x: ${loneX.length} written on their own, ${xExpressions.length} expressions using it`,
         `  a lone x read as "×", which is x at the start of a line: ${loneRead}/${loneX.length} = ${pct(loneRead, loneX.length)}`,
-        `  expressions without "3x" for 3 × x: ${usable.length}`,
-        `    read exactly right: ${xExact}/${usable.length} = ${pct(xExact, usable.length)}`,
-        `    each x read as x, in those grouped right: ${xRead}/${xSeen} = ${pct(xRead, xSeen)}`,
+        `  expressions read exactly right: ${xExact.plain + xExact.implied}/${xExpressions.length} = ${pct(xExact.plain + xExact.implied, xExpressions.length)}`,
+        `    without "3x" for 3 × x: ${xExact.plain}/${xCount.plain} = ${pct(xExact.plain, xCount.plain)}`,
+        `    with it:                ${xExact.implied}/${xCount.implied} = ${pct(xExact.implied, xCount.implied)}`,
+        `  each x read as x, in those grouped right: ${xRead}/${xSeen} = ${pct(xRead, xSeen)}`,
         ...xExamples,
+        '',
+        `Graphs, y = …: ${loneY.length} y written on their own, ${graphInks.length} real lines y = … using x`,
+        `  a lone y read as "×", taken for x unless x has no value above: ${yAsTimes}/${loneY.length} = ${pct(yAsTimes, loneY.length)}`,
+        `  real lines read as the right graph: ${graphRead.length}/${graphInks.length}`,
+        `  each lone y set at the start of those: ${yTrialsRead}/${yTrials.length} = ${pct(yTrialsRead, yTrials.length)} read as the right graph`,
+        `  other expressions taken for a graph: ${falseGraphs.length} of ${notGraphs.length}`,
+        ...falseGraphs.slice(0, 10),
       );
 
       // Writing must never be taken for a scribble, which would rub out what is under it.

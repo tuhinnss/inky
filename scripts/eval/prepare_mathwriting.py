@@ -3,8 +3,8 @@
 MathWriting is 230,000 handwritten expressions, nearly all of them algebra and calculus that
 CalcInk does not set out to read. This reads the archive once, straight from the .tgz without
 unpacking it, and keeps only the inks written by people whose label uses nothing but CalcInk's
-vocabulary: digits, + − × ÷ =, the decimal point and the variable x. Each is written to one
-line of a JSON Lines file, with its strokes.
+vocabulary: digits, + − × ÷ =, the decimal point, and the letters x and y of variables and
+graphs. Each is written to one line of a JSON Lines file, with its strokes.
 
     python scripts/eval/prepare_mathwriting.py mathwriting-2024.tgz data/mathwriting/arithmetic.jsonl
 
@@ -23,7 +23,7 @@ NS = '{http://www.w3.org/2003/InkML}'
 TOKEN = re.compile(r'\\times|\\div|\\cdot|\\[a-zA-Z]+|.')
 # LaTeX tokens CalcInk reads, and the character each one is in an expression the app writes.
 VOCABULARY = {**{d: d for d in '0123456789'}, '+': '+', '-': '-', '=': '=', '.': '.',
-              '\\times': '×', '\\div': '÷', 'x': 'x'}
+              '\\times': '×', '\\div': '÷', 'x': 'x', 'y': 'y'}
 
 
 def expression_of(latex: str):
