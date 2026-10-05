@@ -18,6 +18,7 @@ codebase, and the section that quotes a number says how.
 
 CalcInk is a notebook page that does arithmetic. You write an expression by hand, end it with
 `=`, and the answer is pencilled in beside it. Change the expression and the answer follows.
+Write `y = 2x + 1` and its graph is drawn under it.
 Nothing leaves the device: capture, recognition and evaluation all run in the browser.
 
 The design follows from one decision: **ink is kept as vectors from the first pointer event to the
@@ -58,7 +59,7 @@ it.
 | `src/recognition` | Rasterising, the worker, the model adapter, fusing with geometry | Worker only   |
 | `src/math`        | Tokenizer, parser, evaluator, number formatting                  | No            |
 | `src/app`         | The pipeline that connects the stages; scheduling; the app shell | Timers        |
-| `src/ui`          | Toolbar and the answer overlay                                   | Yes           |
+| `src/ui`          | Toolbar, the answer overlay and graphs, sound and vibration      | Yes           |
 
 Four of the seven are pure functions with no browser dependency. That is deliberate: it is what
 lets the eraser geometry, the layout rules, the rasteriser and the parser be tested exhaustively
@@ -574,15 +575,21 @@ above it. So once every line is read, the page is worked out once more, top to b
 Changing a definition answers every sum below it again, although their ink did not change. A sum
 that uses `x` above any definition gets the usual note under the `x`: give x a value above.
 
-There is one variable, because the model gives one letter: `x`. Writing `3x` for `3 × x` is not
-understood, since a `×` after a number can only be a times sign there.
+**2x.** A `×` with nothing after it that it could multiply, at the end of a line or before `+`,
+`÷` or `=`, cannot be a times sign either. It is the `x` of `2x`, and the parser reads a number
+written against `x` as a product (section 6). Before `−` a `×` still multiplies, since `3 × −2` is
+a sum that works, except in a graph's line, where `y = 3x − 2` is what is meant. A property test
+reads 5,000 random strings both ways: no sum that worked before changes its answer.
 
 Whether a real handwritten `x` comes out as `×` was measured on MathWriting (section 8), which has
-29 handwritten `x` on their own and 85 expressions that use `x` without writing `3x`. Of the lone
-ones, 24 (83%) are read as `×`, and so as `x` at the start of a line. In the expressions grouped
-into the right symbols, 64 of 70 (91%) of the `x` are read as `x`, and 75% of the expressions are
-read exactly. Most of the misses are an `x` written as two curves back to back, `)(`, which do not
-cross: layout takes them for two symbols, read as `06` or `76`.
+29 handwritten `x` on their own and 99 expressions that use `x`, 14 of them writing `3x`. Of the
+lone ones, 24 (83%) are read as `×`, and so as `x` at the start of a line. In the expressions
+grouped into the right symbols, 73 of 83 (88%) of the `x` are read as `x`. 69% of the expressions
+are read exactly: 73% of those without `3x`, and 6 of the 14 with it, which were all read wrong
+before `2x` was understood. Two expressions without `3x` that were read right before no longer
+are: both are `0 = x − 12`, which is now drawn as the graph of `y = x − 12` (see Graphs, below).
+Most of the misses are an `x` written as two curves back to back, `)(`, which do not cross:
+layout takes them for two symbols, read as `06` or `76`.
 
 Joining such a pair into one symbol was tried and not kept. A `)` and a `(` of a height, bulging
 towards each other near their middles, catch most of them, but two things went wrong. The model
@@ -591,6 +598,52 @@ have needed geometry to overrule it. And the rule also joined real digits, a `3`
 whose loop is open among them, in 3 of the 439 sums without `x`, which it would then have read
 as `x`. About ten `x` fixed in expressions that use `x` is not worth sums without one going wrong;
 those are what the notebook is mostly for.
+
+### Graphs
+
+A line `y = 2x + 1`, with no `=` at its end, is drawn as a graph under it
+([`graphs.ts`](../src/app/graphs.ts), [`plot.ts`](../src/ui/plot.ts),
+[`drawGraph.ts`](../src/ui/drawGraph.ts)).
+
+**Reading y.** The model has no letters, and unlike `x` a handwritten `y` looks like no symbol it
+knows. On MathWriting's 59 real `y` written on their own it read `9` most often (25 times), then
+`1`, `4`, `8`, `0` and `3`, and `×` only 3 times. So `y` is known by its place, not its shape: it
+is the first symbol of a line whose second is `=`, that uses `x` after the `=` and does not end
+in `=`. Nothing else written that way means anything to the notebook. `0 = x − 12` is an equation
+to solve, which it does not do; it is drawn as the graph of `y = x − 12`, which at least shows
+where that is zero. A `y` read as `×` makes the line `x = 2x + 1`, which looks like a definition.
+Where `x` has no value above it, it cannot be one, so `evaluatePage` takes it for the graph it
+must be; where `x` has a value, `x = x + 1` stays a definition. Tapping the line shows the first
+symbol labelled `y`.
+
+Each of the 59 real lone `y`, set at the start of the real `y = …` lines that were read right in
+place of the writer's own `y`, gives the right graph 113 times out of 118 (95.8%). MathWriting has
+only 4 real `y = …` lines that use `x`. Two are read as the right graph. In the other two it is
+another symbol that is misread: an `x` written as one looped stroke is read as `4`, and a `2` as
+`3`. Of the 604 other expressions, 3 are taken for graphs, all of them equations like
+`0 = x − 12`.
+
+**What is shown.** The curve is worked out at 401 points from −10 to 10. The expression is read
+once and only evaluated at each `x` (`compile`, section 6). The window starts square, from −10 to
+10 on both axes as on squared paper, where lines, parabolas and `1 ÷ x` keep their true shape.
+When fewer than half of the points fall inside it, as for `y = x + 50` or `y = x × x × x`, the y
+axis is fitted to the curve instead: from the 2nd to the 98th percentile of its values, so that one
+steep tail does not flatten the rest, with 8% added above and below, and stretched to take in zero
+when zero is within a third of the window's height. The axes are numbered in steps of 1, 2 or 5
+times a power of ten, about five to an axis. The curve breaks where it has no value, as `1 ÷ x`
+at 0, and where it leaps from above the window to below it between two points: an asymptote, not a
+line to draw.
+
+**How it is drawn.** In pencil, like everything the notebook writes: a faint frame, the axes where
+zero is in view with an arrow at their ends, ticks numbered in the handwriting font, and the curve
+drawn in from left to right over 0.7 s, the way an answer is written in. It goes under its line,
+starting where the line does, sized to the writing (300 to 420 px wide), and is moved left rather
+than cut off at the page's edge. Writing comes first: when another line or its answer is where the
+graph would go, the graph goes beside its line instead, moved on past anything written there, and
+only when there is room nowhere does it stay under the line, over what is there. It stands square
+even when its line is written at an angle, and goes with the line when the lasso moves it. A new
+graph gets the same note and tap as a new answer (section 4), and a mistake in its expression the
+same zigzag and note as a sum.
 
 ## 4. Drawing
 
@@ -773,7 +826,7 @@ The notebook can be heard and felt as well as seen ([`Feedback.ts`](../src/ui/Fe
 | ------------------------------------ | ----------------------------------------------- | -------------- |
 | The pen moves                        | Pencil on paper, louder the faster it moves     |                |
 | An eraser moves                      | A lower, softer rub                             |                |
-| An answer is written in, or x is set | A soft wooden note, and the answer pencilled in | One 12 ms tap  |
+| An answer, a graph, or x is set      | A soft wooden note, and the answer pencilled in | One 12 ms tap  |
 | A sum does not work, or divides by 0 | Two low notes, falling                          | Two short taps |
 | A scribble rubs writing out          | The scribble itself                             | One 25 ms buzz |
 
@@ -891,14 +944,21 @@ Three pure stages: tokenize, parse, evaluate. There is no `eval` and no `Functio
 anywhere in the codebase, and ESLint is configured to fail the build if one is introduced.
 
 ```
-expression := term   (('+' | '−') term)*
-term       := unary  (('×' | '÷') unary)*
-unary      := '−' unary | primary
+expression := term    (('+' | '−') term)*
+term       := unary   (('×' | '÷') unary)*
+unary      := '−' unary | product
+product    := primary VARIABLE*
 primary    := NUMBER | VARIABLE | '(' expression ')'
 ```
 
 `VARIABLE` is `x`. The evaluator is given the values of the variables known at that line; one it
 is not given is an error that points at it, like any other.
+
+`product` is multiplication without a sign, as algebra writes it: `2x` is 2 × x. Written together,
+a number and its `x` are one quantity, so they bind tighter than `×` and `÷`: `1 ÷ 2x` divides by
+2x, the way it is read on paper. A graph needs one expression worked out at hundreds of values of
+`x`, so `compile` tokenizes and parses it once and returns a function that only evaluates, with no
+value where it divides by zero or overflows.
 
 The parser is recursive descent with one function per rule. Precedence comes from the nesting:
 `expression` calls `term`, so multiplication binds tighter than addition. Both loops consume left
@@ -1059,6 +1119,11 @@ stem; an expression broken across two lines (9 of 439); and a `÷` written large
 came out in pieces 5 times out of 30. With nothing around it there is no line to say how small
 its dots are. Repeat with `npm run eval:operators`.
 
+**x and y.** The letters are measured apart from the arithmetic above, which they leave
+unchanged (section 3): a lone `x` is read as `×`, and so as `x`, 83% of the time, and `x` as `x`
+in 88% of expressions; a real `y` at the start of a real `y = …` line gives the right graph 95.8%
+of the time, and 3 of 604 expressions that are not graphs are taken for one.
+
 ### Memory
 
 Forty cycles of: write three equations, wait for answers, pixel-erase through one, stroke-erase
@@ -1094,30 +1159,31 @@ What makes that hold:
 
 ## 9. Tests
 
-759 tests in 38 files, run with Vitest in Node. `npm test` takes about two seconds.
+816 tests in 40 files, run with Vitest in Node. `npm test` takes about two seconds.
 
-| Area                  | Tests | What is covered                                                                                                                                                                                                                                                                                                                                                      |
-| --------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Math engine           | 93    | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws, the variable x and an x with no value                                                                                                                                                     |
-| Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                                                                                                                                                                                                                     |
-| Layout                | 83    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence, telling a turned line from a climbing one and turning it level, joining a 4, 9 or 5 written in two strokes while keeping -1, =1, +1, 01 and 71 apart, and telling a short minus from a decimal point, and the dots of a `÷` set a bar's width or more from its bar    |
-| Ink                   | 55    | Undo/redo stack behaviour, gesture folding, both erasers, where two strokes cross, and what a scribble is and what it rubs out                                                                                                                                                                                                                                       |
-| Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                                                                                                                                                                                                             |
-| Model integration     | 53    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads, lines turned and climbing at up to 30°                                                                                                                                                                |
-| Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                                                                                                                                                                                                                      |
-| Geometry fusion       | 43    | Stroke arrangements, fusion weights, the decimal point, a `+` with a short bar told from a `1`, `4`, `5` or `7`, and the closed loop at the top of a `9`, but not of a `2`, `3`, `6` or `7`                                                                                                                                                                          |
-| Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                                                                                                                                                                                                                  |
-| Variables             | 16    | Which `×` is x and which multiplies, what a definition is, x taking the value given nearest above, `x = x + 1`, an x used before it has a value, and every sum below answered again when x changes                                                                                                                                                                   |
-| Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                                                                                                                                                                                                                       |
-| Answer overlay        | 34    | What is written after the "=" or under a rule and how dark, the dotted line under a doubted symbol, the note for a line that makes no sense, that no question mark is ever drawn, and that the answer follows a line written at an angle, and that an answer goes with its sum while the lasso drags it and stays at the drop until the sum is read again            |
-| Tool sizes            | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                                                                                                                                                                                                                     |
-| Tool menus            | 20    | Which press picks a tool up and which opens or closes its menu, the eraser button picking up the eraser used last, the lasso having no menu, and the inks: all different, readable on the paper, never the grey of the answers                                                                                                                                       |
-| Pages                 | 15    | Where each page is, the page under a point and none in a gap, how many pages the writing needs, page heights on whole grid squares, and how far the ring around the "+" fills as you pull                                                                                                                                                                            |
-| Lasso                 | 21    | Point in a loop, the loop closing itself, which strokes a loop takes, moving strokes without changing how they look, the box round a selection, and where its Delete button goes                                                                                                                                                                                     |
-| Seeing what was read  | 10    | Which symbol's ink a tap is on and not the empty corner of its box, which sum a tap on ink or on an answer points at, taps on a line written at an angle, and how symbols are labelled                                                                                                                                                                               |
-| Sound and vibration   | 34    | When a cue is due and which one, one cue for many lines, the same answer written again after it was rubbed out, loudness from pen speed, the volume curve and every sound through it, the settings kept, snapped and with storage blocked, nothing before the page is touched, silence at volume 0, vibration on its own switch, browsers without audio or vibration |
-| Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                                                                                                                                                                                                     |
-| Evaluation data       | 14    | Reading pen trajectory files and MathWriting inks for the real-handwriting measurements in section 8, and setting one writer's `÷` into another's expression                                                                                                                                                                                                         |
+| Area                  | Tests | What is covered                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Math engine           | 100   | Precedence, associativity, unary minus, decimals, division by zero, malformed input, display rounding. A fuzz test evaluates 2,000 random strings and asserts none throws, the variable x and an x with no value, `2x` as a product that binds tighter than `×` and `÷`, and an expression compiled once and worked out at any x                                                                               |
+| Coordinates and input | 58    | CSS ↔ device pixels at nine pixel ratios, backing-store rounding, client ↔ page conversion, telling a resting hand from a finger                                                                                                                                                                                                                                                                               |
+| Layout                | 83    | Symbol grouping, multi-stroke symbols, dots, line grouping, drift, drawing-order independence, telling a turned line from a climbing one and turning it level, joining a 4, 9 or 5 written in two strokes while keeping -1, =1, +1, 01 and 71 apart, and telling a short minus from a decimal point, and the dots of a `÷` set a bar's width or more from its bar                                              |
+| Ink                   | 55    | Undo/redo stack behaviour, gesture folding, both erasers, where two strokes cross, and what a scribble is and what it rubs out                                                                                                                                                                                                                                                                                 |
+| Rasteriser            | 22    | Framing, centring, aspect ratio, stroke width clamping, degenerate input                                                                                                                                                                                                                                                                                                                                       |
+| Model integration     | 53    | The bundled models through the function the worker calls: every symbol, five handwriting sizes, six pen widths, ten real digits the main model alone misreads, lines turned and climbing at up to 30°                                                                                                                                                                                                          |
+| Digit helpers         | 43    | The vote (operators untouched, digit total preserved), and the two helper images against their upstream framing                                                                                                                                                                                                                                                                                                |
+| Geometry fusion       | 43    | Stroke arrangements, fusion weights, the decimal point, a `+` with a short bar told from a `1`, `4`, `5` or `7`, and the closed loop at the top of a `9`, but not of a `2`, `3`, `6` or `7`                                                                                                                                                                                                                    |
+| Pipeline              | 62    | Debouncing, caching, stale-result discarding, re-evaluation on edit, worker protocol, reading lines and column sums                                                                                                                                                                                                                                                                                            |
+| Variables             | 20    | Which `×` is x and which multiplies, the x of `2x` before `+`, `÷`, `=` or the end, and before `−` only in a graph, what a definition is, x taking the value given nearest above, `x = x + 1`, an x used before it has a value, every sum below answered again when x changes, and a property test that no sum that worked before changes its answer                                                           |
+| Column sums           | 43    | Finding a column by its rule among other writing, what is not a column, writing the rows out as one expression                                                                                                                                                                                                                                                                                                 |
+| Answer overlay        | 34    | What is written after the "=" or under a rule and how dark, the dotted line under a doubted symbol, the note for a line that makes no sense, that no question mark is ever drawn, and that the answer follows a line written at an angle, and that an answer goes with its sum while the lasso drags it and stays at the drop until the sum is read again                                                      |
+| Graphs                | 47    | Which lines are graphs and the y read by its place, whatever the model took it for, a y read as `×` taken for a graph only when x has no value, mistakes pointed at in the line, the square window and when the y axis is fitted instead, ticks, breaks at gaps and asymptotes, where the graph goes and how it keeps clear of writing and answers, that it moves with its line, and the note a new graph gets |
+| Tool sizes            | 18    | Snapping and stepping the pen and eraser sizes, and where the size panel opens in the wide and the narrow layout                                                                                                                                                                                                                                                                                               |
+| Tool menus            | 20    | Which press picks a tool up and which opens or closes its menu, the eraser button picking up the eraser used last, the lasso having no menu, and the inks: all different, readable on the paper, never the grey of the answers                                                                                                                                                                                 |
+| Pages                 | 15    | Where each page is, the page under a point and none in a gap, how many pages the writing needs, page heights on whole grid squares, and how far the ring around the "+" fills as you pull                                                                                                                                                                                                                      |
+| Lasso                 | 21    | Point in a loop, the loop closing itself, which strokes a loop takes, moving strokes without changing how they look, the box round a selection, and where its Delete button goes                                                                                                                                                                                                                               |
+| Seeing what was read  | 10    | Which symbol's ink a tap is on and not the empty corner of its box, which sum a tap on ink or on an answer points at, taps on a line written at an angle, and how symbols are labelled                                                                                                                                                                                                                         |
+| Sound and vibration   | 34    | When a cue is due and which one, one cue for many lines, the same answer written again after it was rubbed out, loudness from pen speed, the volume curve and every sound through it, the settings kept, snapped and with storage blocked, nothing before the page is touched, silence at volume 0, vibration on its own switch, browsers without audio or vibration                                           |
+| Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                                                                                                                                                                                                                                               |
+| Evaluation data       | 14    | Reading pen trajectory files and MathWriting inks for the real-handwriting measurements in section 8, and setting one writer's `÷` into another's expression                                                                                                                                                                                                                                                   |
 
 Two choices are worth noting. Layout and recognition are tested with **synthetic handwriting**: a
 fixture that turns a string such as `7.5÷2-60=` into stroke paths with controllable size, spacing
@@ -1136,7 +1202,7 @@ cleanly in two:
 | Ink, erasers, scratch-out, undo (`ink/`)                                                                    | 100%          |
 | Reading symbols (`recognition/`, without the worker and client)                                             | 91% to 100%   |
 | From lines to answers (`app/`, without `App.ts`)                                                            | 94% to 100%   |
-| Pure interface logic (menus, sizes, inks, readings, answer layout, cues)                                    | 81% to 100%   |
+| Pure interface logic (menus, sizes, inks, readings, answer layout, cues, graphs)                            | 81% to 100%   |
 | Browser glue: canvases, toolbar, selection bar, page stack, `App.ts`, the worker, the dev-only capture page | 0% to 32%     |
 
 Everything that decides what the notebook reads and answers is covered. What is not is the code
@@ -1163,7 +1229,15 @@ to take it.
 - **Two layouts only: a line ending in `=`, or a column over a rule.** Fractions, exponents,
   long division and expressions that wrap are out of scope. In a column, carries or working
   written among the rows would be read as part of them.
-- **No parentheses.** The parser handles them; the model has no class for them.
+- **No parentheses.** The parser handles them; the model has no class for them. A graph of
+  `(x − 2)²` has to be written multiplied out: `y = x × x − 4x + 4`.
+- **Graphs are of y against x, from −10 to 10.** There is one window, with no zooming or moving
+  it, and only `y = …` of `x`: no `x = …` of `y`, no inequalities, no curves such as circles. A
+  constant, `y = 5`, is not drawn: with no `x` after the `=`, nothing tells the `y` from a digit.
+- **A number equal to an expression in x is drawn as a graph.** `0 = x − 12` is read as
+  `y = x − 12`, since the notebook does not solve equations and the first symbol of such a line is
+  where a `y` would be.
+- **A graph with no room anywhere is drawn over other writing**, under its line.
 - **One variable, `x`, and no implied multiplication.** The model has no letters; `x` is a `×`
   standing where a number belongs. `3x` must be written `3 × x`, and an `x` written as two curves
   back to back, `)(`, is taken for two symbols.

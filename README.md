@@ -50,8 +50,12 @@ appears about a third of a second after you stop writing.
   it, and a new page is added. On a touchscreen, scroll with two fingers; one finger writes.
 - Erase a number and write another in its place, and the answer updates.
 - Give x a value and use it below: write `x = 10`, then `x × 3 + 2 =` gives 32. A later
-  `x = …` takes over from there down, and `x = x + 1` adds one to the x above it. Write `3 × x`,
-  not `3x`.
+  `x = …` takes over from there down, and `x = x + 1` adds one to the x above it. `3x` works as
+  well as `3 × x`.
+- Draw a graph: write `y =` and an expression in x, with no `=` at the end, and the graph is
+  pencilled in under it. `y = 2x + 1`, `y = x × x − 4` and `y = 1 ÷ x` all work. x runs from −10
+  to 10, and the y axis fits itself to the curve. If something is written under the line, the
+  graph goes beside it instead.
 
 Your writing is ink. Everything the notebook works out is drawn in pencil. When it is unsure of a
 symbol it read, the answer is written more faintly and the doubtful symbol gets a dotted line
@@ -145,7 +149,7 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 | `npm run dev`            | Start the dev server                                                                                 |
 | `npm run build`          | Type-check, then build to `dist/`                                                                    |
 | `npm run preview`        | Serve the production build locally                                                                   |
-| `npm test`               | Run the 759 unit and integration tests once                                                          |
+| `npm test`               | Run the 816 unit and integration tests once                                                          |
 | `npm run typecheck`      | Type-check without building                                                                          |
 | `npm run lint`           | Lint the source. Fails on `eval` or `new Function`                                                   |
 | `npm run format`         | Format the source with Prettier                                                                      |
