@@ -765,6 +765,44 @@ beside a 7 is a decimal point and must stay one. A line written at an angle is r
 level frame, so the tap is turned into that frame before it is tested
 ([`readings.ts`](../src/ui/readings.ts)). Erasers do not take part; their taps still erase.
 
+### Sound and vibration
+
+The notebook can be heard and felt as well as seen ([`Feedback.ts`](../src/ui/Feedback.ts)):
+
+| When                                 | Heard                                           | Felt (Android) |
+| ------------------------------------ | ----------------------------------------------- | -------------- |
+| The pen moves                        | Pencil on paper, louder the faster it moves     |                |
+| An eraser moves                      | A lower, softer rub                             |                |
+| An answer is written in, or x is set | A soft wooden note, and the answer pencilled in | One 12 ms tap  |
+| A sum does not work, or divides by 0 | Two low notes, falling                          | Two short taps |
+| A scribble rubs writing out          | The scribble itself                             | One 25 ms buzz |
+
+**Made, not played.** Every sound is synthesised on the spot with the Web Audio API: the pencil is
+white noise with a slowly wandering loudness, the grain of the paper, through a band-pass filter
+at 3.2 kHz (the eraser at 700 Hz); a note is a sine wave with an overtone at 2.76 times its
+frequency, which gives it the knock of a wooden block, fading in a third of a second. There are
+no sound files, so nothing is added to the download or the offline cache, and the sound works
+from the first visit with no network.
+
+**The pencil follows the pen.** The canvas reports each pointer move with the pen's speed. The
+loudness is set from it, rising with the square root of the speed, so slow and careful writing is
+still heard, and silent below 0.03 px/ms, so a pen held still on the paper makes no sound. Each
+move also schedules a fade to silence 60 ms later, which the next move cancels: when the pen
+stops, so does the sound, without a timer on the main thread.
+
+**News, not state** ([`cues.ts`](../src/ui/cues.ts)). The notebook remembers what each line last
+said. Only an answer that appears or changes, or a sum that newly fails, gives a cue, and an update
+gives at most one, a problem taking precedence over an answer. Undoing "clear" brings back a page
+of answers with one note, not a dozen, and moving a sum with the lasso, which leaves its answer as
+it was, makes no sound at all.
+
+**Polite to the device.** Browsers keep a page silent until it has been touched, so the audio
+starts on the first press on the page and not before. After four quiet seconds it is suspended,
+which lets the device power its audio down, and woken again by the next stroke or answer. Vibration
+uses `navigator.vibrate`: Android browsers have it, iPhones and iPads do not, and many tablets have
+no vibration motor; where it is missing nothing happens. The speaker button in the margin turns
+sound and vibration off together, and the choice is kept in this browser's storage.
+
 ### The lasso
 
 The third tool selects strokes to move or delete ([`selection.ts`](../src/ink/selection.ts)).
@@ -1046,7 +1084,7 @@ What makes that hold:
 
 ## 9. Tests
 
-725 tests in 36 files, run with Vitest in Node. `npm test` takes about two seconds.
+750 tests in 38 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area                  | Tests | What is covered                                                                                                                                                                                                                                                                                                                                                   |
 | --------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1067,6 +1105,7 @@ What makes that hold:
 | Pages                 | 15    | Where each page is, the page under a point and none in a gap, how many pages the writing needs, page heights on whole grid squares, and how far the ring around the "+" fills as you pull                                                                                                                                                                         |
 | Lasso                 | 21    | Point in a loop, the loop closing itself, which strokes a loop takes, moving strokes without changing how they look, the box round a selection, and where its Delete button goes                                                                                                                                                                                  |
 | Seeing what was read  | 10    | Which symbol's ink a tap is on and not the empty corner of its box, which sum a tap on ink or on an answer points at, taps on a line written at an angle, and how symbols are labelled                                                                                                                                                                            |
+| Sound and vibration   | 25    | When a cue is due and which one, one cue for many lines, the same answer written again after it was rubbed out, loudness from pen speed, the setting kept and storage blocked, nothing before the page is touched or when switched off, browsers without audio or vibration                                                                                       |
 | Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                                                                                                                                                                                                  |
 | Evaluation data       | 14    | Reading pen trajectory files and MathWriting inks for the real-handwriting measurements in section 8, and setting one writer's `÷` into another's expression                                                                                                                                                                                                      |
 
@@ -1087,7 +1126,7 @@ cleanly in two:
 | Ink, erasers, scratch-out, undo (`ink/`)                                                                    | 100%          |
 | Reading symbols (`recognition/`, without the worker and client)                                             | 91% to 100%   |
 | From lines to answers (`app/`, without `App.ts`)                                                            | 94% to 100%   |
-| Pure interface logic (menus, sizes, inks, readings, answer layout)                                          | 81% to 100%   |
+| Pure interface logic (menus, sizes, inks, readings, answer layout, cues)                                    | 81% to 100%   |
 | Browser glue: canvases, toolbar, selection bar, page stack, `App.ts`, the worker, the dev-only capture page | 0% to 32%     |
 
 Everything that decides what the notebook reads and answers is covered. What is not is the code
@@ -1122,6 +1161,8 @@ to take it.
 - **The answer does not avoid ink.** It is drawn to the right of the `=`, or below the line when
   it would run off the page; it does not check for other writing there.
 - **Nothing is saved.** Reloading the app starts a fresh notebook.
+- **Vibration on Android only.** iPhones and iPads have no vibration API for web pages, and many
+  tablets have no motor. On an iPhone, the ring/silent switch also silences the sounds.
 - **The lasso only moves and deletes.** There is no copy and paste, and no resizing or turning
   of a selection.
 - **Touch scrolling has no momentum.** Two fingers move the pages exactly as far as they move.

@@ -68,6 +68,7 @@ why; nothing is written where the answer would go.
 | Undo                                             | `Ctrl+Z` |
 | Redo                                             | `Ctrl+Y` |
 | Clear all pages (can be undone)                  |          |
+| Sound and vibration on or off                    |          |
 
 Press a tool once to pick it up, and press it again for its menu. The pen's menu sets its width,
 from 1.5 to 12 px, and its colour, from six inks. The eraser's menu sets the size of its tip, from
@@ -79,6 +80,10 @@ it is rubbed out. Undo brings it back.
 
 With the lasso, draw a loop round some writing to select it. Drag the selection to move it, its
 answer with it, or press Delete. Tap elsewhere to let it go.
+
+You hear the pencil as you write and the eraser as you rub. When an answer is written in, there is
+a soft note, and on Android a light tap; a sum that does not work gets two low notes. The speaker
+at the foot of the tools turns sound and vibration off, and remembers.
 
 To see what the notebook read, tap any number or sign of a sum, or its answer. Each symbol is
 labelled with what it was read as; a fainter label means it was unsure. Tap again to hide them.
@@ -139,7 +144,7 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 | `npm run dev`            | Start the dev server                                                                                 |
 | `npm run build`          | Type-check, then build to `dist/`                                                                    |
 | `npm run preview`        | Serve the production build locally                                                                   |
-| `npm test`               | Run the 725 unit and integration tests once                                                          |
+| `npm test`               | Run the 750 unit and integration tests once                                                          |
 | `npm run typecheck`      | Type-check without building                                                                          |
 | `npm run lint`           | Lint the source. Fails on `eval` or `new Function`                                                   |
 | `npm run format`         | Format the source with Prettier                                                                      |
@@ -169,7 +174,7 @@ src/
   recognition/   rasteriser, worker, model adapter, fusing model output with geometry
   math/          tokenizer, parser, evaluator, number formatting
   app/           the pipeline connecting the stages; scheduling; app shell
-  ui/            toolbar, answer overlay
+  ui/            toolbar, answer overlay, sound and vibration
   dev/           saving a page of handwriting for study (not in the production build)
   styles/        the notebook page
 public/models/   the ONNX model and its licence
