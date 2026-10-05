@@ -55,6 +55,12 @@ export interface InkCanvasOptions {
   onTap?: (at: Position) => boolean;
 }
 
+/** A pen or an eraser moving across the page, and how fast, in CSS pixels per millisecond. */
+export interface Motion {
+  tool: 'pen' | 'eraser';
+  speed: number;
+}
+
 /** What the pointer that is currently down is doing. */
 interface Gesture {
   pointerId: number;
@@ -76,6 +82,8 @@ interface Gesture {
   start: Position;
   startedAt: number;
   travel: number;
+  /** The time stamp of the last pointer event, to tell how fast the pointer moves. */
+  movedAt: number;
   /** Where the pointer is on the screen, in case a second finger turns this into a scroll. */
   clientY: number;
 }
@@ -156,6 +164,8 @@ export class InkCanvas {
   private stopWatchingPixelRatio: () => void = () => {};
   private readonly removeListeners: Array<() => void> = [];
   private readonly activityListeners = new Set<(active: boolean) => void>();
+  private readonly motionListeners = new Set<(motion: Motion | null) => void>();
+  private readonly scratchListeners = new Set<() => void>();
   private readonly viewListeners = new Set<() => void>();
 
   constructor(
@@ -291,6 +301,21 @@ export class InkCanvas {
   }
 
   /**
+   * Called as a pen or an eraser moves across the page, with how fast it goes, and with
+   * null when it lifts. The lasso is not reported: it makes no mark.
+   */
+  onMotion(listener: (motion: Motion | null) => void): () => void {
+    this.motionListeners.add(listener);
+    return () => this.motionListeners.delete(listener);
+  }
+
+  /** Called when a scribble with the pen rubbed writing out. */
+  onScratchOut(listener: () => void): () => void {
+    this.scratchListeners.add(listener);
+    return () => this.scratchListeners.delete(listener);
+  }
+
+  /**
    * Called after the canvases were resized or scrolled, and the ink redrawn, so that the
    * overlay can be redrawn in the same frame.
    */
@@ -323,6 +348,8 @@ export class InkCanvas {
     for (const remove of this.removeListeners) remove();
     this.removeListeners.length = 0;
     this.activityListeners.clear();
+    this.motionListeners.clear();
+    this.scratchListeners.clear();
     this.viewListeners.clear();
     this.selectionListeners.clear();
     this.dragListeners.clear();
@@ -380,6 +407,7 @@ export class InkCanvas {
       start: position,
       startedAt: performance.now(),
       travel: 0,
+      movedAt: event.timeStamp,
     };
     this.hover = position;
 
@@ -437,7 +465,15 @@ export class InkCanvas {
       else if (gesture.tool === 'lasso') this.extendLasso(this.toPage(sample));
       else this.erase(this.toPage(sample));
     }
-    this.hover = this.toPage(event);
+    const at = this.toPage(event);
+    if (gesture.tool !== 'lasso' && this.hover && event.timeStamp > gesture.movedAt) {
+      const speed =
+        Math.hypot(at.x - this.hover.x, at.y - this.hover.y) / (event.timeStamp - gesture.movedAt);
+      const motion: Motion = { tool: gesture.tool === 'pen' ? 'pen' : 'eraser', speed };
+      for (const listener of this.motionListeners) listener(motion);
+    }
+    gesture.movedAt = event.timeStamp;
+    this.hover = at;
     gesture.travel = Math.max(
       gesture.travel,
       Math.hypot(this.hover.x - gesture.start.x, this.hover.y - gesture.start.y),
@@ -540,6 +576,7 @@ export class InkCanvas {
           : [];
       if (scratched.length > 0) {
         this.history.execute(new StrokeEdit(scratched, []));
+        for (const listener of this.scratchListeners) listener();
       } else if (commit && gesture.points.length > 0) {
         const stroke = createStroke(
           gesture.points,
@@ -562,6 +599,7 @@ export class InkCanvas {
     }
 
     this.drawLive();
+    for (const listener of this.motionListeners) listener(null);
     for (const listener of this.activityListeners) listener(false);
   }
 
