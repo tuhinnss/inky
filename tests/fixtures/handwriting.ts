@@ -186,6 +186,19 @@ const GLYPHS: Readonly<Record<string, Glyph>> = {
     ],
   ],
   '.': [[[0.5, 0.5]]],
+  // The letter of a graph's line, as most people print it: the short arm, then the long
+  // one carried on down below the line into the tail.
+  y: [
+    [
+      [0, 0],
+      [0.5, 0.5],
+    ],
+    [
+      [1, 0],
+      [0.55, 0.5],
+      [0.15, 1],
+    ],
+  ],
 };
 
 interface Shape {
@@ -206,6 +219,8 @@ const SHAPES: Readonly<Record<string, Shape>> = {
   '=': { width: 0.55, height: 0.32, centre: 0.5 },
   '.': { width: 0.06, height: 0, centre: 0.97 },
   '1': { width: 0.3, height: 1, centre: 0.5 },
+  // A small letter: its arms reach halfway up the digits, its tail a third below them.
+  y: { width: 0.5, height: 0.85, centre: 0.92 },
 };
 
 export interface WriteOptions {

@@ -12,19 +12,33 @@ function sure(symbol: string, confidence = 0.99): Float32Array {
   );
 }
 
+/**
+ * What the model takes each character for, where it has no class of its own: it knows no
+ * letters, and reads a handwritten y most often as a 9.
+ */
+type Reads = Readonly<Record<string, string>>;
+const MODEL_READS: Reads = { y: '9' };
+
 /** A cache as if the model had read every symbol of `written` correctly. */
-function cacheFor(line: Line, written: readonly InkSymbol[], confidence = 0.99) {
+function cacheFor(
+  line: Line,
+  written: readonly InkSymbol[],
+  confidence = 0.99,
+  reads: Reads = MODEL_READS,
+) {
   const cache = new Map<string, Float32Array>();
   line.symbols.forEach((symbol, i) => {
-    if (symbol.kind === 'shape') cache.set(symbol.key, sure(written[i].char, confidence));
+    const char = written[i].char;
+    if (symbol.kind === 'shape') cache.set(symbol.key, sure(reads[char] ?? char, confidence));
   });
   return cache;
 }
 
-function read(text: string, confidence?: number) {
+function read(text: string, confidence?: number, reads?: Reads) {
   const written = ink(text, { size: 80 });
   const line = segmentLine(strokesOf(written));
-  return readEquation({ id: 1, version: 1, line }, cacheFor(line, written, confidence));
+  expect(line.symbols).toHaveLength(written.length);
+  return readEquation({ id: 1, version: 1, line }, cacheFor(line, written, confidence, reads));
 }
 
 describe('reading an equation', () => {
@@ -148,6 +162,68 @@ describe('the variable x on a page', () => {
   it('leaves lines without x as they were read', () => {
     const plain = read('18+4×3=');
     expect(evaluatePage([plain])[0]).toBe(plain);
+  });
+});
+
+describe('graphs on a page', () => {
+  const page = (...lines: Array<string | [string, Reads]>) =>
+    evaluatePage(
+      lines.map((line, i) => {
+        const [text, reads] = typeof line === 'string' ? [line, undefined] : line;
+        return { ...read(text, undefined, reads), id: i + 1 };
+      }),
+    );
+
+  it('reads y by its place, whatever the model took it for', () => {
+    for (const as of ['9', '4', '1', '8']) {
+      const [line] = page(['y=2×+1', { y: as }]);
+      expect(line.expression).toBe('y=2x+1');
+      expect(line.readings[0]).toEqual({ symbol: 'y', confidence: 1 });
+      expect(line.graph).toEqual({ body: '2x+1' });
+      expect(line.evaluation).toBeNull();
+    }
+  });
+
+  it('reads the x of 3x before a minus sign in a graph', () => {
+    expect(page('y=3×-2')[0].graph).toEqual({ body: '3x-2' });
+  });
+
+  it('draws y = x', () => {
+    expect(page('y=×')[0].graph).toEqual({ body: 'x' });
+  });
+
+  it('points into the line when the expression does not make sense', () => {
+    const [line] = page('y=2×+');
+    expect(line.graph).toBeUndefined();
+    expect(line.evaluation).toMatchObject({
+      status: 'error',
+      error: { code: 'unexpected-end', position: 5 },
+    });
+  });
+
+  it('takes x = 2x + 1 for a graph whose y was read as "×", when x has no value', () => {
+    const [line] = page(['y=2×+1', { y: '×' }]);
+    expect(line.expression).toBe('y=2x+1');
+    expect(line.readings[0].symbol).toBe('y');
+    expect(line.graph).toEqual({ body: '2x+1' });
+    expect(line.definition).toBeUndefined();
+  });
+
+  it('keeps x = x + 1 a definition when x has a value above', () => {
+    const [, line] = page('×=10', ['y=×+1', { y: '×' }]);
+    expect(line.graph).toBeUndefined();
+    expect(line.definition).toEqual({ name: 'x', value: 11 });
+  });
+
+  it('draws the graph over every x, whatever value x has above', () => {
+    const [, line] = page('×=10', 'y=2×+1');
+    expect(line.graph).toEqual({ body: '2x+1' });
+  });
+
+  it('leaves a line without x as it was', () => {
+    const [line] = page(['y=21', { y: '4' }]);
+    expect(line.expression).toBe('4=21');
+    expect(line.graph).toBeUndefined();
   });
 });
 

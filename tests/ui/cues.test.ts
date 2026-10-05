@@ -38,6 +38,16 @@ describe('outcomeOf', () => {
     expect(outcomeOf(definition(1, 10))).toEqual({ cue: 'answer', text: 'x=10' });
   });
 
+  it('calls a graph drawn an answer, and a changed graph news', () => {
+    const graph = (body: string) =>
+      ({ id: 1, expression: `y=${body}`, evaluation: null, graph: { body } }) as Equation;
+    expect(outcomeOf(graph('2x+1'))).toEqual({ cue: 'answer', text: 'graph:2x+1' });
+    const cues = new CueTracker();
+    expect(cues.next([graph('2x+1')])).toBe('answer');
+    expect(cues.next([graph('2x+1')])).toBeNull();
+    expect(cues.next([graph('2x+3')])).toBe('answer');
+  });
+
   it('calls a malformed sum, division by zero and overflow problems', () => {
     expect(outcomeOf(line(1, '18+='))?.cue).toBe('problem');
     expect(outcomeOf(line(1, '1÷0='))?.cue).toBe('problem');

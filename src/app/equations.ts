@@ -3,9 +3,10 @@
  */
 
 import type { Line } from '../layout';
-import { evaluate, EQUALS, VARIABLE, type Evaluation } from '../math';
+import { compile, evaluate, EQUALS, VARIABLE, type Evaluation } from '../math';
 import { interpret, type Reading } from '../recognition/interpret';
 import { assembleColumn } from './columnSum';
+import { GRAPH_VARIABLE, graphOf, hasGraphForm, readGraph, type Graph } from './graphs';
 import { definitionOf, readVariables, type Definition } from './variables';
 
 /** Model output per symbol, keyed by `SymbolGroup.key`. */
@@ -34,6 +35,8 @@ export interface Equation {
   evaluation: Evaluation | null;
   /** Set when the line gives x a value, as in "x=10". Lines below then use it. */
   definition?: Definition;
+  /** Set when the line asks for a graph, as in "y=2x+1". */
+  graph?: Graph;
   /** The weakest reading on the line. An answer is only as sure as its least sure symbol. */
   confidence: number;
 }
@@ -58,10 +61,15 @@ function readLine(
     const interpreted = line.symbols.map((symbol) =>
       interpret(symbol, line, cache.get(symbol.key)),
     );
-    const symbols = readVariables(interpreted.map((reading) => reading.symbol));
-    const readings = interpreted.map((reading, i): Reading =>
-      symbols[i] === VARIABLE ? { ...reading, symbol: VARIABLE } : reading,
-    );
+    const read = interpreted.map((reading) => reading.symbol);
+    const symbols = readGraph(readVariables(read, { graph: hasGraphForm(read) }));
+    // x and y are read by their place on the line. x is a "×" the model was sure of to
+    // some degree; a y can be anything the model took it for, so its reading says nothing.
+    const readings = interpreted.map((reading, i): Reading => {
+      if (symbols[i] === GRAPH_VARIABLE) return { symbol: GRAPH_VARIABLE, confidence: 1 };
+      if (symbols[i] === VARIABLE) return { ...reading, symbol: VARIABLE };
+      return reading;
+    });
     return { readings, expression: symbols.join('') };
   }
 
@@ -127,6 +135,11 @@ export function evaluatePage(equations: readonly Equation[]): Equation[] {
   return equations.map((equation): Equation => {
     if (equation.line.column) return equation;
 
+    const graph = graphOf(equation.expression);
+    if (graph) return withGraph(equation, graph);
+    const misread = misreadGraph(equation, values);
+    if (misread) return misread;
+
     const definition = definitionOf(equation.expression);
     if (definition) {
       const evaluation = evaluateSafely(definition.body, values);
@@ -159,6 +172,32 @@ export function evaluatePage(equations: readonly Equation[]): Equation[] {
     }
     return { ...equation, evaluation: evaluateSafely(equation.expression, values) };
   });
+}
+
+/**
+ * A graph's line, checked: the graph to draw, or what is wrong with its expression, at
+ * its place in the line as written.
+ */
+function withGraph(equation: Equation, graph: Graph): Equation {
+  const compiled = compile(graph.body);
+  if (compiled.ok) return { ...equation, evaluation: null, graph };
+  const offset = equation.expression.length - graph.body.length;
+  const error = { ...compiled.error, position: compiled.error.position + offset };
+  return { ...equation, evaluation: { status: 'error', error } };
+}
+
+/**
+ * `x = …` using x, where x has no value above: not a definition, which could not be
+ * worked out, but a graph whose y was read as "×" (see graphs.ts).
+ */
+function misreadGraph(equation: Equation, values: ReadonlyMap<string, number>): Equation | null {
+  const definition = definitionOf(equation.expression);
+  if (!definition || values.has(VARIABLE) || !definition.body.includes(VARIABLE)) return null;
+  const readings = equation.readings.map((reading, i): Reading =>
+    i === 0 ? { symbol: GRAPH_VARIABLE, confidence: 1 } : reading,
+  );
+  const expression = GRAPH_VARIABLE + equation.expression.slice(1);
+  return withGraph({ ...equation, readings, expression }, { body: definition.body });
 }
 
 interface Known {

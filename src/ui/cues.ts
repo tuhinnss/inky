@@ -16,9 +16,10 @@ export type Cue = 'answer' | 'problem';
 
 /** What the line says now, as far as a cue is concerned, or null when it says nothing yet. */
 export function outcomeOf(equation: Equation): { cue: Cue; text: string } | null {
-  const { evaluation, definition } = equation;
-  // "x = 10" taken in is an answer of sorts: the notebook understood.
+  const { evaluation, definition, graph } = equation;
+  // "x = 10" taken in, or a graph drawn, is an answer of sorts: the notebook understood.
   if (definition) return { cue: 'answer', text: `${definition.name}=${definition.value}` };
+  if (graph) return { cue: 'answer', text: `graph:${graph.body}` };
   if (!evaluation) return null;
   switch (evaluation.status) {
     case 'ok':
