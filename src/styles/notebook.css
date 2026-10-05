@@ -76,7 +76,17 @@
   transform: rotate(-4deg) scaleX(1);
 }
 
+/* A switch is not a tool in hand: its icon says whether it is on, without the swipe. */
+.tool-switch[aria-pressed='true']::before {
+  transform: rotate(-4deg) scaleX(0);
+}
+
 .tool:hover:not(:disabled, [aria-pressed='true'], [aria-expanded='true'])::before {
+  transform: rotate(-4deg) scaleX(1);
+  opacity: 0.35;
+}
+
+.tool-switch:hover::before {
   transform: rotate(-4deg) scaleX(1);
   opacity: 0.35;
 }

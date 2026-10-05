@@ -30,6 +30,14 @@ export const icons = {
   ),
   undo: svg('<path d="M8 6L4 10l4 4"/><path d="M4 10h9.5a5.5 5.5 0 0 1 0 11H10"/>'),
   redo: svg('<path d="M16 6l4 4-4 4"/><path d="M20 10h-9.5a5.5 5.5 0 0 0 0 11H14"/>'),
+  /** A speaker giving out sound: sound and vibration on. */
+  sound: svg(
+    '<path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1z"/><path d="M15.5 9a4.2 4.2 0 0 1 0 6"/><path d="M18.2 6.5a8 8 0 0 1 0 11"/>',
+  ),
+  /** The same speaker, silent: sound and vibration off. */
+  muted: svg(
+    '<path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1z"/><path d="M16 9.5l5 5"/><path d="M21 9.5l-5 5"/>',
+  ),
   /** A fresh sheet: the page with its corner turned. */
   clear: svg(
     '<path d="M6 3h8l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/>',

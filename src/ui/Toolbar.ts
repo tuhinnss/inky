@@ -15,6 +15,8 @@ export interface ToolbarState {
   canUndo: boolean;
   canRedo: boolean;
   canClear: boolean;
+  /** Whether sound and vibration are on. */
+  feedback: boolean;
 }
 
 export interface ToolbarActions {
@@ -25,6 +27,7 @@ export interface ToolbarActions {
   undo(): void;
   redo(): void;
   clear(): void;
+  setFeedback(on: boolean): void;
 }
 
 const ERASERS: ReadonlyArray<{ tool: Eraser; label: string; shortcut: string; icon: string }> = [
@@ -67,6 +70,7 @@ export class Toolbar {
   private readonly undoButton: HTMLButtonElement;
   private readonly redoButton: HTMLButtonElement;
   private readonly clearButton: HTMLButtonElement;
+  private readonly feedbackButton: HTMLButtonElement;
   private readonly abort = new AbortController();
 
   /** The state last shown. What a press on a tool button does depends on what is in hand. */
@@ -93,7 +97,14 @@ export class Toolbar {
     this.clearButton = this.button(icons.clear, 'Clear all pages', '', () => actions.clear());
     edits.append(this.undoButton, this.redoButton, this.clearButton);
 
-    this.element.append(tools, edits);
+    const settings = this.group('Settings');
+    this.feedbackButton = this.button(icons.sound, 'Sound and vibration', '', () =>
+      actions.setFeedback(!this.state?.feedback),
+    );
+    this.feedbackButton.classList.add('tool-switch');
+    settings.append(this.feedbackButton);
+
+    this.element.append(tools, edits, settings);
 
     // A menu closes the way any menu does: press anywhere else, press Escape, or change the
     // layout under it. Capturing means the page still gets the press, so reaching for the
@@ -130,6 +141,7 @@ export class Toolbar {
     this.undoButton.disabled = !state.canUndo;
     this.redoButton.disabled = !state.canRedo;
     this.clearButton.disabled = !state.canClear;
+    this.showFeedback(state.feedback);
   }
 
   destroy(): void {
@@ -243,6 +255,16 @@ export class Toolbar {
     button.dataset.eraser = eraser;
     button.innerHTML = icons.eraser;
     button.setAttribute('aria-label', `Eraser: ${label.toLowerCase()}`);
+  }
+
+  /** The speaker shows what you hear: sound coming out of it, or none. */
+  private showFeedback(on: boolean): void {
+    const button = this.feedbackButton;
+    if (button.dataset.on === String(on)) return;
+    button.dataset.on = String(on);
+    button.innerHTML = on ? icons.sound : icons.muted;
+    button.setAttribute('aria-pressed', String(on));
+    button.title = on ? 'Sound and vibration: on' : 'Sound and vibration: off';
   }
 
   private onPress(button: ToolButton): void {

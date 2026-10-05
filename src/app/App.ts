@@ -3,6 +3,8 @@ import { PageStack } from '../canvas/PageStack';
 import { History, StrokeEdit, StrokeStore } from '../ink';
 import { RecognitionClient } from '../recognition/RecognitionClient';
 import { AnswerOverlay } from '../ui/AnswerOverlay';
+import { CueTracker } from '../ui/cues';
+import { Feedback } from '../ui/Feedback';
 import { DEFAULT_INK, inkFor } from '../ui/inks';
 import type { Eraser } from '../ui/menus';
 import { SelectionBar } from '../ui/SelectionBar';
@@ -29,6 +31,8 @@ export class App {
   private readonly recognition: RecognitionClient;
   private readonly pipeline: RecognitionPipeline;
   private readonly overlay: AnswerOverlay;
+  private readonly feedback = new Feedback();
+  private readonly cues = new CueTracker();
   private readonly cleanup: Array<() => void> = [];
   private noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -52,6 +56,12 @@ export class App {
       undo: () => this.history.undo(),
       redo: () => this.history.redo(),
       clear: () => this.clear(),
+      setFeedback: (on) => {
+        this.feedback.setEnabled(on);
+        // The press on the button is a touch: the audio can start now.
+        this.feedback.wake();
+        this.refresh();
+      },
     });
 
     const wordmark = document.createElement('span');
@@ -96,6 +106,8 @@ export class App {
       onUpdate: (equations) => {
         this.equations = equations;
         this.overlay.setEquations(equations);
+        const cue = this.cues.next(equations);
+        if (cue) this.feedback.cue(cue);
       },
       onStats: (stats) => (this.stats = stats),
       onError: (error) => this.showNotice(`Could not read the page: ${error.message}`),
@@ -107,7 +119,12 @@ export class App {
     this.cleanup.push(
       this.store.subscribe(() => this.refresh()),
       this.history.subscribe(() => this.refresh()),
-      this.canvas.onActivity((active) => this.pipeline.setPenDown(active)),
+      this.canvas.onActivity((active) => {
+        this.pipeline.setPenDown(active);
+        if (active) this.feedback.wake();
+      }),
+      this.canvas.onMotion((motion) => this.feedback.move(motion)),
+      this.canvas.onScratchOut(() => this.feedback.scratchedOut()),
       this.canvas.onViewChanged(() => {
         this.overlay.redraw();
         this.placeSelectionBar();
@@ -139,6 +156,7 @@ export class App {
     clearTimeout(this.noticeTimer);
     this.pipeline.dispose();
     this.recognition.dispose();
+    this.feedback.destroy();
     this.overlay.destroy();
     this.canvas.destroy();
     this.selectionBar.destroy();
@@ -220,6 +238,7 @@ export class App {
       canUndo: this.history.canUndo,
       canRedo: this.history.canRedo,
       canClear: this.store.size > 0,
+      feedback: this.feedback.enabled,
     });
   }
 
