@@ -107,8 +107,10 @@ describe('plot', () => {
 });
 
 describe('graphFrame', () => {
+  const line = { minX: 100, minY: 130, maxX: 400, maxY: 200 };
+
   it('goes under its line, from where the line starts', () => {
-    const frame = graphFrame({ minX: 100, maxY: 200 }, 60, 1000);
+    const frame = graphFrame(line, 60, 1000);
     expect(frame.left).toBe(100);
     expect(frame.top).toBeGreaterThan(200);
     expect(frame.width).toBe(300);
@@ -116,13 +118,40 @@ describe('graphFrame', () => {
   });
 
   it('grows with the writing, up to a point', () => {
-    expect(graphFrame({ minX: 0, maxY: 0 }, 20, 1000).width).toBe(260);
-    expect(graphFrame({ minX: 0, maxY: 0 }, 200, 1000).width).toBe(420);
+    expect(graphFrame(line, 20, 1000).width).toBe(300);
+    expect(graphFrame(line, 200, 1000).width).toBe(420);
   });
 
   it('stays on a narrow page', () => {
-    const frame = graphFrame({ minX: 200, maxY: 0 }, 60, 320);
+    const frame = graphFrame({ ...line, minX: 200 }, 60, 320);
     expect(frame.left).toBeGreaterThanOrEqual(12);
     expect(frame.left + frame.width).toBeLessThanOrEqual(320 - 12);
+  });
+
+  it('goes beside its line when there is writing underneath', () => {
+    const underneath = { minX: 120, minY: 300, maxX: 380, maxY: 360 };
+    const frame = graphFrame(line, 60, 1200, [underneath]);
+    expect(frame.left).toBeGreaterThan(line.maxX);
+    expect(frame.top).toBe(line.minY);
+  });
+
+  it('stays under its line when there is no room beside it either', () => {
+    const underneath = { minX: 120, minY: 300, maxX: 380, maxY: 360 };
+    expect(graphFrame(line, 60, 700, [underneath]).left).toBe(100);
+    const beside = { minX: 700, minY: 120, maxX: 900, maxY: 200 };
+    expect(graphFrame(line, 60, 1200, [underneath, beside]).left).toBe(100);
+  });
+
+  it('moves on past writing beside its line', () => {
+    const underneath = { minX: 120, minY: 300, maxX: 380, maxY: 360 };
+    const answer = { minX: 150, minY: 250, maxX: 560, maxY: 330 };
+    const frame = graphFrame(line, 60, 1200, [underneath, answer]);
+    expect(frame.left).toBeGreaterThan(560);
+    expect(frame.top).toBe(line.minY);
+  });
+
+  it('ignores writing that is nowhere near', () => {
+    const far = { minX: 100, minY: 900, maxX: 400, maxY: 960 };
+    expect(graphFrame(line, 60, 1200, [far]).left).toBe(100);
   });
 });

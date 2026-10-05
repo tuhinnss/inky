@@ -106,7 +106,7 @@ export function niceTicks(min: number, max: number, steps = TICK_STEPS): number[
   if (!(span > 0) || !Number.isFinite(span)) return [min];
   const rough = span / steps;
   const power = 10 ** Math.floor(Math.log10(rough));
-  const step = [1, 2, 5, 10].map((m) => m * power).find((s) => s >= rough * 0.75) ?? 10 * power;
+  const step = [1, 2, 5, 10].map((m) => m * power).find((s) => s >= rough * 0.7) ?? 10 * power;
   const first = Math.ceil(min / step - 1e-9);
   const last = Math.floor(max / step + 1e-9);
   const ticks: number[] = [];
@@ -160,21 +160,56 @@ export interface Frame {
 /** Space kept between a graph and the edges of the page. */
 const MARGIN = 12;
 
+interface Box {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 /**
  * Where a graph goes: under its line, from where the line starts, sized to the writing
  * but never wider than the page allows. A graph near the right edge is moved left onto
  * the page rather than cut off.
  *
+ * Writing comes first. When there is writing where the graph would go, it goes to the
+ * right of its line instead, moved on past any writing there, as long as it stays on the
+ * page. When there is room nowhere, it stays under the line, over what is there.
+ *
  * @param line the box of the graph's line on the page.
  * @param lineHeight the height of a digit on that line.
+ * @param others the boxes of the other writing on the page.
  */
 export function graphFrame(
-  line: { minX: number; maxY: number },
+  line: Box,
   lineHeight: number,
   pageWidth: number,
+  others: readonly Box[] = [],
 ): Frame {
-  const width = Math.max(0, Math.min(Math.max(5 * lineHeight, 260), 420, pageWidth - 2 * MARGIN));
-  const left = Math.max(MARGIN, Math.min(line.minX, pageWidth - MARGIN - width));
-  const top = line.maxY + Math.max(16, 0.4 * lineHeight);
-  return { left, top, width, height: Math.round(width * 0.72) };
+  const width = Math.max(0, Math.min(Math.max(4.5 * lineHeight, 300), 420, pageWidth - 2 * MARGIN));
+  const height = Math.round(width * 0.72);
+  const gap = Math.max(16, 0.4 * lineHeight);
+  const below: Frame = {
+    left: Math.max(MARGIN, Math.min(line.minX, pageWidth - MARGIN - width)),
+    top: line.maxY + gap,
+    width,
+    height,
+  };
+  const overlaps = (frame: Frame, box: Box): boolean =>
+    box.maxX >= frame.left &&
+    box.minX <= frame.left + frame.width &&
+    box.maxY >= frame.top &&
+    box.minY <= frame.top + frame.height;
+  const fits = (frame: Frame): boolean =>
+    frame.left + frame.width <= pageWidth - MARGIN && !others.some((box) => overlaps(frame, box));
+  if (fits(below)) return below;
+
+  let beside: Frame = { left: line.maxX + 2 * gap, top: line.minY, width, height };
+  // Each move clears at least one box, so this ends after one move per box at most.
+  for (let moves = 0; moves < others.length; moves++) {
+    const blocking = others.filter((box) => overlaps(beside, box));
+    if (blocking.length === 0) break;
+    beside = { ...beside, left: Math.max(...blocking.map((box) => box.maxX)) + gap };
+  }
+  return fits(beside) ? beside : below;
 }

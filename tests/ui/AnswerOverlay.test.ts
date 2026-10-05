@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readEquation, type Equation } from '../../src/app/equations';
+import { evaluatePage, readEquation, type Equation } from '../../src/app/equations';
 import type { CanvasLayer } from '../../src/canvas/CanvasLayer';
-import { layoutPage, segmentLine } from '../../src/layout';
+import { layoutPage, segmentLine, type Line } from '../../src/layout';
 import { MODEL_SYMBOLS, type ModelSymbol } from '../../src/recognition/model';
 import {
   AnswerOverlay,
   answerOpacity,
   answerText,
   isDragged,
+  lineOnPage,
   LOW_CONFIDENCE,
+  roomTaken,
 } from '../../src/ui/AnswerOverlay';
 import { ink, inkColumn, strokesOf, turned } from '../fixtures/ink';
 
@@ -438,5 +440,86 @@ describe('a sum dragged with the lasso', () => {
     overlay.setDrag({ ids: idsOf(sum), dx: 40, dy: 180, dropped: false });
     overlay.setDrag(null);
     expect(frame().shifts).toEqual([]);
+  });
+});
+
+describe('a graph', () => {
+  /** A graph's line, read and worked out as the page would be. */
+  const graphed = (text: string, x = 40): Equation => evaluatePage([equation(text, 1, x)])[0];
+  const idsOf = (line: Equation): Set<number> =>
+    new Set(line.line.symbols.flatMap((symbol) => symbol.strokes.map((stroke) => stroke.id)));
+
+  it('is drawn under its line, numbered on both axes', () => {
+    const line = graphed('y=2×+1');
+    expect(line.graph).toEqual({ body: '2x+1' });
+    const { texts } = show([line]);
+    expect(texts.map((t) => t.text)).toEqual(expect.arrayContaining(['x', 'y', '0', '5', '−5']));
+    for (const text of texts) expect(text.y).toBeGreaterThan(line.line.bounds.maxY);
+  });
+
+  it('is numbered on the y axis it was fitted to', () => {
+    const labels = show([graphed('y=×+50')]).texts.map((t) => t.text);
+    expect(labels).toEqual(expect.arrayContaining(['40', '45', '50', '55']));
+    // With no x axis in view, x is numbered along the bottom, right to the end.
+    expect(labels).toEqual(expect.arrayContaining(['−10', '0', '10']));
+    expect(labels).not.toContain('x');
+  });
+
+  it('goes with its line while the lasso drags it', () => {
+    const line = graphed('y=2×+1');
+    const fake = fakeLayer(1200);
+    const overlay = new AnswerOverlay(fake.layer);
+    overlay.setEquations([line]);
+    overlay.setDrag({ ids: idsOf(line), dx: 40, dy: 180, dropped: false });
+    overlay.redraw();
+    // Once for what is written on the line, once for the graph.
+    expect(fake.shifts).toEqual([
+      [40, 180],
+      [40, 180],
+    ]);
+  });
+
+  it('is gone once its line no longer asks for one', () => {
+    const fake = fakeLayer(1200);
+    const overlay = new AnswerOverlay(fake.layer);
+    overlay.setEquations([graphed('y=2×+1')]);
+    overlay.setEquations([{ ...equation('18+4='), id: 1 }]);
+    overlay.redraw();
+    expect(fake.texts.map((t) => t.text)).toEqual(['22']);
+  });
+});
+
+describe('the room a line takes', () => {
+  it('runs on past the "=" as far as its answer', () => {
+    const sum = equation('18+4=');
+    const room = roomTaken(sum);
+    expect(room.minX).toBe(sum.line.bounds.minX);
+    expect(room.maxX).toBeGreaterThan(sum.line.bounds.maxX + sum.line.height);
+  });
+
+  it('is only the writing while there is no answer', () => {
+    const sum = equation('18+4');
+    expect(roomTaken(sum)).toEqual(sum.line.bounds);
+  });
+});
+
+describe('lineOnPage', () => {
+  const line = (tilt?: Line['tilt']): Line => ({
+    bounds: { minX: 0, minY: 0, maxX: 100, maxY: 20 },
+    height: 20,
+    symbols: [],
+    tilt,
+  });
+
+  it('is the box of a level line', () => {
+    expect(lineOnPage(line())).toEqual({ minX: 0, minY: 0, maxX: 100, maxY: 20 });
+  });
+
+  it('turns the box of a line written at an angle back onto the page', () => {
+    const box = lineOnPage(line({ angle: Math.PI / 2, degrees: 90, pivotX: 0, pivotY: 0 }));
+    expect(box.minX).toBeCloseTo(-20);
+    expect(box.maxX).toBeCloseTo(0);
+    expect(box.minY).toBeCloseTo(0);
+    expect(box.maxY).toBeCloseTo(100);
   });
 });

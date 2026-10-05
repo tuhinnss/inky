@@ -3,24 +3,58 @@ import type { CanvasLayer } from '../canvas/CanvasLayer';
 import type { Drag } from '../canvas/InkCanvas';
 import type { Bounds } from '../ink';
 import type { Line } from '../layout';
+import { compile } from '../math';
 import type { Reading } from '../recognition/interpret';
+import { drawGraph } from './drawGraph';
+import { GRAPHITE, font } from './pencil';
+import { graphFrame, plot, type Plot } from './plot';
 import { equationAt, labelFor } from './readings';
-
-/** Pencil graphite, as `r, g, b` for use with varying opacity. */
-const GRAPHITE = '74, 78, 87';
-/** Kalam's light weight: nearer to a pencil line than the regular weight is. */
-const FONT = '300 {size}px Kalam, "Segoe Print", "Bradley Hand", cursive';
-const font = (size: number): string => FONT.replace('{size}', String(size));
 
 /** Below this a reading is shown as doubtful. */
 export const LOW_CONFIDENCE = 0.6;
 /** How long an answer takes to be pencilled in. */
 const WRITE_MS = 260;
+/** How long a graph's curve takes to be drawn in, from left to right. */
+const GRAPH_MS = 700;
 
 interface Shown {
   text: string;
   /** When this text first appeared, for the write-on animation. */
   since: number;
+}
+
+interface ShownGraph {
+  /** What it is the graph of: the expression after `y=`. */
+  body: string;
+  since: number;
+  plot: Plot;
+}
+
+/**
+ * The box a line takes up on the page. A line written at an angle is stored turned
+ * level; its box on the page is that of its corners turned back.
+ */
+export function lineOnPage(line: Line): Bounds {
+  const { bounds, tilt } = line;
+  if (!tilt) return bounds;
+  const cos = Math.cos(tilt.angle);
+  const sin = Math.sin(tilt.angle);
+  const corners = [
+    [bounds.minX, bounds.minY],
+    [bounds.maxX, bounds.minY],
+    [bounds.minX, bounds.maxY],
+    [bounds.maxX, bounds.maxY],
+  ].map(([x, y]) => {
+    const dx = x - tilt.pivotX;
+    const dy = y - tilt.pivotY;
+    return { x: tilt.pivotX + dx * cos - dy * sin, y: tilt.pivotY + dx * sin + dy * cos };
+  });
+  return {
+    minX: Math.min(...corners.map((c) => c.x)),
+    minY: Math.min(...corners.map((c) => c.y)),
+    maxX: Math.max(...corners.map((c) => c.x)),
+    maxY: Math.max(...corners.map((c) => c.y)),
+  };
 }
 
 /**
@@ -41,6 +75,20 @@ export function answerText(equation: Equation): string | null {
 export function answerOpacity(confidence: number): number {
   const sureness = Math.min(1, Math.max(0, (confidence - 0.4) / 0.5));
   return 0.42 + 0.53 * sureness;
+}
+
+/**
+ * The room a line takes on the page: its writing, and the answer written after it or,
+ * for a column sum, under it. The answer's width is reckoned at half a digit height per
+ * character, as the handwriting font sets it.
+ */
+export function roomTaken(equation: Equation): Bounds {
+  const box = lineOnPage(equation.line);
+  const text = answerText(equation);
+  if (text === null) return box;
+  const { height } = equation.line;
+  if (equation.line.column) return { ...box, maxY: box.maxY + 1.3 * height };
+  return { ...box, maxX: box.maxX + height * (0.34 + 0.55 * text.length) };
 }
 
 /**
@@ -67,6 +115,8 @@ export function isDragged(equation: Equation, drag: Drag): boolean {
 export class AnswerOverlay {
   private equations: readonly Equation[] = [];
   private readonly shown = new Map<number, Shown>();
+  /** The graphs drawn, by equation id, sampled once each time their expression changes. */
+  private readonly graphs = new Map<number, ShownGraph>();
   private frame = 0;
   private readonly reducedMotion: boolean;
   /** Strokes the lasso is dragging. What is written for them is drawn moved with them. */
@@ -107,6 +157,19 @@ export class AnswerOverlay {
       }
     }
     for (const id of this.shown.keys()) if (!present.has(id)) this.shown.delete(id);
+
+    const graphed = new Set<number>();
+    for (const equation of equations) {
+      if (!equation.graph) continue;
+      graphed.add(equation.id);
+      const { body } = equation.graph;
+      if (this.graphs.get(equation.id)?.body === body) continue;
+      const compiled = compile(body);
+      // evaluatePage has said what is wrong with it under the line: nothing to draw.
+      if (!compiled.ok) continue;
+      this.graphs.set(equation.id, { body, since: now, plot: plot((x) => compiled.at(x)) });
+    }
+    for (const id of this.graphs.keys()) if (!graphed.has(id)) this.graphs.delete(id);
     const alive = new Set(equations.map((equation) => equation.id));
     for (const id of this.revealed) if (!alive.has(id)) this.revealed.delete(id);
 
@@ -141,6 +204,7 @@ export class AnswerOverlay {
   destroy(): void {
     cancelAnimationFrame(this.frame);
     this.shown.clear();
+    this.graphs.clear();
     this.equations = [];
   }
 
@@ -156,6 +220,8 @@ export class AnswerOverlay {
     this.layer.clear();
     this.answerBoxes.clear();
     let animating = false;
+    /** The graphs drawn so far in this frame: a later one keeps clear of them. */
+    const placed: Bounds[] = [];
 
     for (const equation of this.equations) {
       // A line written at an angle was turned level to be read, and its geometry is in
@@ -181,6 +247,30 @@ export class AnswerOverlay {
         this.drawAnswer(ctx, equation, shown.text, progress);
       }
       ctx.restore();
+
+      // A graph is drawn square to the page, under its line, even when the line is not.
+      const graph = this.graphs.get(equation.id);
+      if (graph) {
+        const progress = this.reducedMotion ? 1 : Math.min(1, (now - graph.since) / GRAPH_MS);
+        if (progress < 1) animating = true;
+        ctx.save();
+        if (this.drag && isDragged(equation, this.drag)) ctx.translate(this.drag.dx, this.drag.dy);
+        const others = this.equations.filter((other) => other !== equation).map(roomTaken);
+        const frame = graphFrame(
+          lineOnPage(equation.line),
+          equation.line.height,
+          this.layer.width,
+          [...others, ...placed],
+        );
+        drawGraph(ctx, frame, graph.plot, progress);
+        placed.push({
+          minX: frame.left,
+          minY: frame.top,
+          maxX: frame.left + frame.width,
+          maxY: frame.top + frame.height,
+        });
+        ctx.restore();
+      }
     }
 
     if (animating) this.requestDraw();
