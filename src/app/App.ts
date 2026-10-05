@@ -81,7 +81,9 @@ export class App {
 
     const hint = document.createElement('p');
     hint.className = 'hint';
-    hint.innerHTML = 'Write a sum, then finish it with =<small>18 + 4 × 3 =</small>';
+    hint.innerHTML =
+      'Write a sum, then finish it with =<small>18 + 4 × 3 =</small>' +
+      '<small>For a graph, write y = 2x + 1</small>';
     this.pages.sheet(0).append(hint);
     this.notice = document.createElement('p');
     this.notice.className = 'notice';

@@ -499,6 +499,10 @@
   font-size: 20px;
 }
 
+.hint small + small {
+  margin-top: 0;
+}
+
 .notebook[data-empty='false'] .hint {
   opacity: 0;
 }
