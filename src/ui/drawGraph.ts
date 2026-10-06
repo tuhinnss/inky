@@ -73,40 +73,72 @@ export function drawGraph(
   ctx.stroke();
 
   ctx.font = font(size);
-  ctx.fillStyle = `rgba(${GRAPHITE}, 0.8)`;
-  /** Where the axes are numbered: key point labels keep clear of these. */
-  const numbers: Box[] = [];
-  const number = (text: string, at: number, baseline: number): void => {
-    ctx.fillText(text, at, baseline);
+  /** The numbers along the axes, written once the key points have had their pick of room. */
+  const numbers: Written[] = [];
+  const number = (
+    text: string,
+    at: number,
+    baseline: number,
+    align: 'left' | 'center' | 'right',
+    mode: 'top' | 'middle',
+  ): void => {
     const w = ctx.measureText(text).width;
-    const textLeft =
-      ctx.textAlign === 'center' ? at - w / 2 : ctx.textAlign === 'right' ? at - w : at;
-    const textTop = ctx.textBaseline === 'middle' ? baseline - size / 2 : baseline;
-    numbers.push({ left: textLeft, top: textTop, right: textLeft + w, bottom: textTop + size });
+    const textLeft = align === 'center' ? at - w / 2 : align === 'right' ? at - w : at;
+    const textTop = mode === 'middle' ? baseline - size / 2 : baseline;
+    numbers.push({
+      text,
+      x: at,
+      y: baseline,
+      align,
+      baseline: mode,
+      box: { left: textLeft, top: textTop, right: textLeft + w, bottom: textTop + size },
+    });
   };
   // Zero is where the axes cross: numbered once, at the corner, not on both.
   const origin = xAxis && yAxis;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
   for (const tick of plot.xTicks) {
     if (tick === 0 && origin) continue;
     // The last number would sit on the arrowhead.
     if (xAxis && px(tick) > right - size) continue;
-    number(formatNumber(tick), px(tick), xLine + TICK + 2);
+    number(formatNumber(tick), px(tick), xLine + TICK + 2, 'center', 'top');
   }
   // Numbers left of the y axis; with no axis in view, just inside the frame.
-  ctx.textAlign = yAxis ? 'right' : 'left';
-  ctx.textBaseline = 'middle';
   const numberX = yAxis ? yLine - TICK - 3 : left + TICK + 3;
   for (const tick of plot.yTicks) {
     if (tick === 0 && origin) continue;
     if (yAxis && py(tick) < top + size) continue;
-    number(formatNumber(tick), numberX, py(tick));
+    number(formatNumber(tick), numberX, py(tick), yAxis ? 'right' : 'left', 'middle');
   }
-  if (origin) {
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'top';
-    number('0', yLine - TICK, xLine + TICK);
+  if (origin) number('0', yLine - TICK, xLine + TICK, 'right', 'top');
+
+  // Where the curve crosses the axes and where it turns, each marked as the pencil reaches
+  // it. Turns first, then roots, then the crossing of the y axis: a label that would cover
+  // one already placed goes on the other side, and is left out if there is no room. A label
+  // may take the place of a number on an axis, which is then left out: the axes are numbered
+  // evenly and a missing number is easily read off its neighbours; a key point is not.
+  const eased = 1 - (1 - Math.max(0, Math.min(1, progress))) ** 3;
+  const until = x.min + (x.max - x.min) * eased;
+  const labelSize = Math.round(size * 0.9);
+  ctx.font = font(labelSize);
+  const reached = plot.keyPoints.filter((point) => point.x <= until);
+  const order = (point: KeyPoint): number =>
+    point.bend !== 0 ? 0 : point.kinds.includes('root') ? 1 : 2;
+  const labels: Written[] = [];
+  for (const point of [...reached].sort((a, b) => order(a) - order(b))) {
+    const label = placeLabel(ctx, point, px(point.x), py(point.y), frame, labelSize, {
+      labels: labels.map((l) => l.box),
+      numbers: numbers.map((n) => n.box),
+    });
+    if (label) labels.push(label);
+  }
+
+  ctx.font = font(size);
+  ctx.fillStyle = `rgba(${GRAPHITE}, 0.8)`;
+  for (const written of numbers) {
+    if (labels.some((label) => overlap(label.box, written.box))) continue;
+    ctx.textAlign = written.align;
+    ctx.textBaseline = written.baseline;
+    ctx.fillText(written.text, written.x, written.y);
   }
   ctx.textBaseline = 'middle';
   if (xAxis) {
@@ -122,32 +154,33 @@ export function drawGraph(
   ctx.beginPath();
   ctx.rect(left, top, width, height);
   ctx.clip();
-  const eased = 1 - (1 - Math.max(0, Math.min(1, progress))) ** 3;
-  const until = x.min + (x.max - x.min) * eased;
   ctx.strokeStyle = `rgba(${GRAPHITE}, 0.92)`;
   ctx.lineWidth = 2.25;
   ctx.beginPath();
   for (const run of plot.runs) traceRun(ctx, run, until, px, py);
   ctx.stroke();
 
-  // Where it crosses the axes and where it turns, each marked as the pencil reaches it.
-  const labelSize = Math.round(size * 0.9);
-  ctx.font = font(labelSize);
-  const reached = plot.keyPoints.filter((point) => point.x <= until);
   ctx.fillStyle = `rgba(${GRAPHITE}, 0.95)`;
   for (const point of reached) {
     ctx.beginPath();
     ctx.arc(px(point.x), py(point.y), 3.2, 0, Math.PI * 2);
     ctx.fill();
   }
-  // Turns first, then roots, then the crossing of the y axis: a label that would cover one
-  // already written goes on the other side, and is left out if that is taken too.
-  const order = (point: KeyPoint): number =>
-    point.bend !== 0 ? 0 : point.kinds.includes('root') ? 1 : 2;
-  const taken: Box[] = [...numbers];
-  for (const point of [...reached].sort((a, b) => order(a) - order(b))) {
-    const box = placeLabel(ctx, point, px(point.x), py(point.y), frame, labelSize, taken);
-    if (box) taken.push(box);
+  // Each label on a patch of paper, so that no line runs through it: an axis through
+  // "(0, 1)" reads as "(0;-1)".
+  ctx.font = font(labelSize);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  for (const label of labels) {
+    const { box } = label;
+    ctx.fillStyle = PAPER;
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.rect(box.left, box.top, box.right - box.left, box.bottom - box.top);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = `rgba(${GRAPHITE}, 0.9)`;
+    ctx.fillText(label.text, label.x, label.y);
   }
   ctx.restore();
 }
@@ -159,6 +192,16 @@ interface Box {
   bottom: number;
 }
 
+/** Something to write, where, and the room it takes. */
+interface Written {
+  text: string;
+  x: number;
+  y: number;
+  align: 'left' | 'center' | 'right';
+  baseline: 'top' | 'middle';
+  box: Box;
+}
+
 const overlap = (a: Box, b: Box): boolean =>
   a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
@@ -168,13 +211,12 @@ function short(value: number): string {
 }
 
 /**
- * Writes a key point's coordinates on the side the curve leaves empty: under a lowest
- * point, over a highest, and off to the side of a crossing, away from the way the curve
- * runs through it and from the numbers along the axes. Each label is set on a patch of
- * paper, so that no line runs through it: an axis through "(0, 1)" reads as "(0;−1)".
+ * Where to write a key point's coordinates: on the side the curve leaves empty, under a
+ * lowest point, over a highest, and off to the side of a crossing, away from the way the
+ * curve runs through it and from the numbers along the axes. The first spot clear of other
+ * labels and of the numbers is taken; failing that, the first clear of other labels.
  *
- * @param taken boxes already written in: numbers and other labels.
- * @returns the box written in, or null when there was no room for it.
+ * @returns where to write it, or null when there is no room for it.
  */
 function placeLabel(
   ctx: CanvasRenderingContext2D,
@@ -183,8 +225,8 @@ function placeLabel(
   y: number,
   frame: Frame,
   size: number,
-  taken: readonly Box[],
-): Box | null {
+  taken: { labels: readonly Box[]; numbers: readonly Box[] },
+): Written | null {
   const text = `(${short(point.x)}, ${short(point.y)})`;
   const width = ctx.measureText(text).width;
   const gap = 6;
@@ -213,10 +255,12 @@ function placeLabel(
             ? [
                 [toLeft, above],
                 [toRight, below],
+                [toLeft, below],
               ]
             : [
                 [toRight, above],
                 [toLeft, below],
+                [toRight, below],
               ]
           : rising
             ? [
@@ -227,24 +271,19 @@ function placeLabel(
                 [toRight, above],
                 [toLeft, below],
               ];
-  for (const [spotLeft, spotTop] of spots) {
+  const options = spots.map(([spotLeft, spotTop]): Written => {
     const left = Math.max(frame.left + 2, Math.min(spotLeft, frame.left + frame.width - width - 2));
     const top = Math.max(frame.top + 2, Math.min(spotTop, frame.top + frame.height - size - 2));
     const box = { left: left - 2, top: top - 1, right: left + width + 2, bottom: top + size + 1 };
-    if (taken.some((other) => overlap(box, other))) continue;
-    ctx.fillStyle = PAPER;
-    ctx.globalAlpha = 0.85;
-    ctx.beginPath();
-    ctx.rect(box.left, box.top, box.right - box.left, box.bottom - box.top);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = `rgba(${GRAPHITE}, 0.9)`;
-    ctx.fillText(text, left, top);
-    return box;
-  }
-  return null;
+    return { text, x: left, y: top, align: 'left', baseline: 'top', box };
+  });
+  const clear = (written: Written, of: readonly Box[]): boolean =>
+    !of.some((other) => overlap(written.box, other));
+  return (
+    options.find((w) => clear(w, taken.labels) && clear(w, taken.numbers)) ??
+    options.find((w) => clear(w, taken.labels)) ??
+    null
+  );
 }
 
 /** Adds a run of the curve to the path, as far as x = `until`. */
