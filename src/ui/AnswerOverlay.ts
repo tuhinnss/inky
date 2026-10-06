@@ -264,7 +264,10 @@ export class AnswerOverlay {
           this.layer.width,
           [...others, ...placed],
         );
-        drawGraph(ctx, frame, graph.plot, progress);
+        // A graph is as sure as its line: fainter when the notebook doubts a symbol of it,
+        // as an answer is.
+        const opacity = answerOpacity(equation.confidence) / answerOpacity(1);
+        drawGraph(ctx, frame, graph.plot, progress, opacity);
         placed.push({
           minX: frame.left,
           minY: frame.top,

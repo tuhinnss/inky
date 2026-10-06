@@ -14,12 +14,14 @@ const ARROW = 6;
 
 /**
  * @param progress from 0 to 1: how much of the curve has been drawn in so far.
+ * @param opacity how firmly to draw it: fainter when the notebook was unsure of its line.
  */
 export function drawGraph(
   ctx: CanvasRenderingContext2D,
   frame: Frame,
   plot: Plot,
   progress: number,
+  opacity = 1,
 ): void {
   const { left, top, width, height } = frame;
   const right = left + width;
@@ -36,6 +38,7 @@ export function drawGraph(
   const size = Math.max(13, Math.min(17, width / 24));
 
   ctx.save();
+  ctx.globalAlpha = opacity;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
@@ -174,11 +177,11 @@ export function drawGraph(
   for (const label of labels) {
     const { box } = label;
     ctx.fillStyle = PAPER;
-    ctx.globalAlpha = 0.85;
+    ctx.globalAlpha = 0.85 * opacity;
     ctx.beginPath();
     ctx.rect(box.left, box.top, box.right - box.left, box.bottom - box.top);
     ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = opacity;
     ctx.fillStyle = `rgba(${GRAPHITE}, 0.9)`;
     ctx.fillText(label.text, label.x, label.y);
   }

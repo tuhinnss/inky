@@ -85,6 +85,7 @@ function fakeLayer(width: number) {
 
   const ctx = {
     font: '',
+    globalAlpha: 1,
     fillStyle: '',
     strokeStyle: '',
     textAlign: 'left',
@@ -120,7 +121,8 @@ function fakeLayer(width: number) {
     fillText: (text: string, x: number, y: number) => {
       const w = widthOf(text, ctx.font);
       const left = ctx.textAlign === 'center' ? x - w / 2 : x;
-      const opacity = Number(/,\s*([\d.]+)\)$/.exec(ctx.fillStyle)?.[1] ?? 1);
+      // The colour's own opacity, and that of everything drawn at the time.
+      const opacity = Number(/,\s*([\d.]+)\)$/.exec(ctx.fillStyle)?.[1] ?? 1) * ctx.globalAlpha;
       texts.push({ text, left, right: left + w, y, opacity, clip: clips[clips.length - 1] });
     },
   };
@@ -495,6 +497,14 @@ describe('a graph', () => {
       [40, 180],
       [40, 180],
     ]);
+  });
+
+  it('is drawn fainter when the notebook doubts a symbol of its line', () => {
+    const sure = graphed('y=2×+1');
+    const unsure = { ...sure, confidence: 0.45 };
+    const darkest = (equation: Equation): number =>
+      Math.max(...show([equation]).texts.map((t) => t.opacity));
+    expect(darkest(unsure)).toBeLessThan(0.6 * darkest(sure));
   });
 
   it('is gone once its line no longer asks for one', () => {
