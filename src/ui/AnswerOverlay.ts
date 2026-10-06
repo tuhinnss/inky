@@ -152,7 +152,17 @@ export class AnswerOverlay {
   /** Where each answer was last drawn, by equation id, in its line's own frame. */
   private readonly answerBoxes = new Map<number, Bounds>();
 
-  constructor(private readonly layer: CanvasLayer) {
+  /** How far down the graphs reached when last reported. */
+  private graphsReach = 0;
+
+  /**
+   * @param onGraphsReach told how far down the page the graphs go, whenever that changes,
+   *   so that there is paper under them.
+   */
+  constructor(
+    private readonly layer: CanvasLayer,
+    private readonly onGraphsReach: (bottom: number) => void = () => {},
+  ) {
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
 
@@ -324,6 +334,14 @@ export class AnswerOverlay {
         });
         ctx.restore();
       }
+    }
+
+    let reach = 0;
+    for (const frame of this.graphFrames.values())
+      reach = Math.max(reach, frame.top + frame.height);
+    if (reach !== this.graphsReach) {
+      this.graphsReach = reach;
+      if (reach > 0) this.onGraphsReach(reach);
     }
 
     if (animating) this.requestDraw();

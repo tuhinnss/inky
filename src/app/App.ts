@@ -105,7 +105,8 @@ export class App {
     });
     this.canvas.setTool(this.tool);
 
-    this.overlay = new AnswerOverlay(this.canvas.overlay);
+    // A graph near the foot of the last page gets a page under it, as writing there would.
+    this.overlay = new AnswerOverlay(this.canvas.overlay, (bottom) => this.pages.reach(bottom));
     this.recognition = new RecognitionClient();
     this.pipeline = new RecognitionPipeline(this.store, this.recognition, {
       onUpdate: (equations) => {

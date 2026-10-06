@@ -151,6 +151,18 @@ export class PageStack {
     }
   }
 
+  /**
+   * Adds pages, if need be, so that the page reaches down to `y`: for what the notebook draws
+   * below the writing, such as a graph under its line near the foot of a page.
+   */
+  reach(y: number): void {
+    if (this.pages.height === 0) return;
+    const needed = pagesFor(this.pages, y);
+    if (needed <= this.pages.count) return;
+    this.pages = { ...this.pages, count: needed };
+    this.render();
+  }
+
   /** Drops the pages after the last one with writing on it. For clearing the notebook. */
   trim(): void {
     let needed = 1;

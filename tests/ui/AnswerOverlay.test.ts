@@ -529,6 +529,18 @@ describe('a graph', () => {
     expect(overlay.toggleReadingsAt({ x: 5, y: 5 })).toBe(false);
   });
 
+  it('says how far down the page it reaches, so that there is paper under it', () => {
+    const line = graphed('y=2×+1');
+    const reaches: number[] = [];
+    const overlay = new AnswerOverlay(fakeLayer(1200).layer, (bottom) => reaches.push(bottom));
+    overlay.setEquations([line]);
+    overlay.redraw();
+    overlay.redraw();
+    const frame = graphFrame(lineOnPage(line.line), line.line.height, 1200, []);
+    // Once, not on every frame.
+    expect(reaches).toEqual([frame.top + frame.height]);
+  });
+
   it('is gone once its line no longer asks for one', () => {
     const fake = fakeLayer(1200);
     const overlay = new AnswerOverlay(fake.layer);
