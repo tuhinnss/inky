@@ -8,7 +8,7 @@ import { compile } from '../math';
 import type { Reading } from '../recognition/interpret';
 import { drawGraph } from './drawGraph';
 import { GRAPHITE, font } from './pencil';
-import { graphFrame, plot, type Plot } from './plot';
+import { graphFrame, plot, type Frame, type Plot, type Range } from './plot';
 import { equationAt, labelFor } from './readings';
 
 /** Below this a reading is shown as doubtful. */
@@ -29,6 +29,8 @@ interface ShownGraph {
   body: string;
   since: number;
   plot: Plot;
+  /** The curve's value at any x, for reading it off where the graph is tapped. */
+  at: (x: number) => number | null;
 }
 
 /**
@@ -79,6 +81,24 @@ export function answerOpacity(confidence: number): number {
   return 0.42 + 0.53 * sureness;
 }
 
+const inFrame = (at: { x: number; y: number }, frame: Frame): boolean =>
+  at.x >= frame.left &&
+  at.x <= frame.left + frame.width &&
+  at.y >= frame.top &&
+  at.y <= frame.top + frame.height;
+
+/**
+ * The x a tap reads a graph off at, `share` of the way across its window, rounded to a
+ * hundredth of the window's width in a round step: a tenth across −10 to 10, so the point
+ * read is x = 1.4, not x = 1.3871.
+ */
+export function readOff(x: Range, share: number): number {
+  const at = x.min + Math.max(0, Math.min(1, share)) * (x.max - x.min);
+  const step = 10 ** Math.floor(Math.log10((x.max - x.min) / 100));
+  const rounded = Number((Math.round(at / step) * step).toPrecision(12));
+  return rounded === 0 ? 0 : rounded;
+}
+
 /**
  * The room a line takes on the page: its writing, and the answer written after it or,
  * for a column sum, under it. The answer's width is reckoned at half a digit height per
@@ -119,6 +139,10 @@ export class AnswerOverlay {
   private readonly shown = new Map<number, Shown>();
   /** The graphs drawn, by equation id, sampled once each time their expression changes. */
   private readonly graphs = new Map<number, ShownGraph>();
+  /** Where each graph was last drawn, by equation id. */
+  private readonly graphFrames = new Map<number, Frame>();
+  /** The point read off a graph where it was tapped: the graph's id and the x. */
+  private trace: { id: number; x: number } | null = null;
   private frame = 0;
   private readonly reducedMotion: boolean;
   /** Strokes the lasso is dragging. What is written for them is drawn moved with them. */
@@ -169,9 +193,13 @@ export class AnswerOverlay {
       const compiled = compile(body);
       // evaluatePage has said what is wrong with it under the line: nothing to draw.
       if (!compiled.ok) continue;
-      this.graphs.set(equation.id, { body, since: now, plot: plot((x) => compiled.at(x)) });
+      const at = (x: number): number | null => compiled.at(x);
+      this.graphs.set(equation.id, { body, since: now, plot: plot(at), at });
+      // A point read off the old curve says nothing about the new one.
+      if (this.trace?.id === equation.id) this.trace = null;
     }
     for (const id of this.graphs.keys()) if (!graphed.has(id)) this.graphs.delete(id);
+    if (this.trace && !this.graphs.has(this.trace.id)) this.trace = null;
     const alive = new Set(equations.map((equation) => equation.id));
     for (const id of this.revealed) if (!alive.has(id)) this.revealed.delete(id);
 
@@ -186,6 +214,19 @@ export class AnswerOverlay {
    * @returns whether the tap was on a sum, and so was taken.
    */
   toggleReadingsAt(at: { x: number; y: number }): boolean {
+    // A tap on a graph reads the curve off there; a tap anywhere else puts that away.
+    for (const [id, frame] of this.graphFrames) {
+      if (!inFrame(at, frame)) continue;
+      const { x } = this.graphs.get(id)!.plot;
+      this.trace = { id, x: readOff(x, (at.x - frame.left) / frame.width) };
+      this.requestDraw();
+      return true;
+    }
+    if (this.trace) {
+      this.trace = null;
+      this.requestDraw();
+      return true;
+    }
     const equation = equationAt(this.equations, this.answerBoxes, at);
     if (!equation) return false;
     if (!this.revealed.delete(equation.id)) this.revealed.add(equation.id);
@@ -207,6 +248,8 @@ export class AnswerOverlay {
     cancelAnimationFrame(this.frame);
     this.shown.clear();
     this.graphs.clear();
+    this.graphFrames.clear();
+    this.trace = null;
     this.equations = [];
   }
 
@@ -221,6 +264,7 @@ export class AnswerOverlay {
     const { ctx } = this.layer;
     this.layer.clear();
     this.answerBoxes.clear();
+    this.graphFrames.clear();
     let animating = false;
     /** The graphs drawn so far in this frame: a later one keeps clear of them. */
     const placed: Bounds[] = [];
@@ -267,7 +311,11 @@ export class AnswerOverlay {
         // A graph is as sure as its line: fainter when the notebook doubts a symbol of it,
         // as an answer is.
         const opacity = answerOpacity(equation.confidence) / answerOpacity(1);
-        drawGraph(ctx, frame, graph.plot, progress, opacity);
+        const traced = this.trace?.id === equation.id ? this.trace.x : null;
+        const trace = traced === null ? undefined : { x: traced, y: graph.at(traced) };
+        drawGraph(ctx, frame, graph.plot, progress, opacity, trace);
+        if (!(this.drag && isDragged(equation, this.drag)))
+          this.graphFrames.set(equation.id, frame);
         placed.push({
           minX: frame.left,
           minY: frame.top,

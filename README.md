@@ -57,7 +57,8 @@ appears about a third of a second after you stop writing.
   pencilled in under it. `y = 2x + 1`, `y = x² − 4x + 3` and `y = 1 ÷ x` all work. Where it
   crosses the axes and where it turns are marked with their coordinates. x runs from −10 to 10,
   closing in on a parabola's roots and vertex, and the y axis fits itself to the curve. If
-  something is written under the line, the graph goes beside it instead.
+  something is written under the line, the graph goes beside it instead. Tap the graph to read
+  the curve off at that point.
 - Solve an equation: write it with x on either side and no `=` at the end, such as
   `x² − 5x + 6 = 0` or `2x + 3 = 7`, and what x is, `x = 2 or 3`, is pencilled in after it.
   Equations up to x² are solved exactly.
@@ -154,7 +155,7 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 | `npm run dev`            | Start the dev server                                                                                 |
 | `npm run build`          | Type-check, then build to `dist/`                                                                    |
 | `npm run preview`        | Serve the production build locally                                                                   |
-| `npm test`               | Run the 871 unit and integration tests once                                                          |
+| `npm test`               | Run the 875 unit and integration tests once                                                          |
 | `npm run typecheck`      | Type-check without building                                                                          |
 | `npm run lint`           | Lint the source. Fails on `eval` or `new Function`                                                   |
 | `npm run format`         | Format the source with Prettier                                                                      |

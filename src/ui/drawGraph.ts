@@ -15,6 +15,8 @@ const ARROW = 6;
 /**
  * @param progress from 0 to 1: how much of the curve has been drawn in so far.
  * @param opacity how firmly to draw it: fainter when the notebook was unsure of its line.
+ * @param trace a point read off the curve where the graph was tapped, if any: its x, and its
+ *   y or null where the curve has no value.
  */
 export function drawGraph(
   ctx: CanvasRenderingContext2D,
@@ -22,6 +24,7 @@ export function drawGraph(
   plot: Plot,
   progress: number,
   opacity = 1,
+  trace?: { x: number; y: number | null },
 ): void {
   const { left, top, width, height } = frame;
   const right = left + width;
@@ -185,7 +188,72 @@ export function drawGraph(
     ctx.fillStyle = `rgba(${GRAPHITE}, 0.9)`;
     ctx.fillText(label.text, label.x, label.y);
   }
+
+  if (trace && progress >= 1) {
+    markReading(ctx, trace, frame, { px, py, xLine, yLine }, labelSize, opacity);
+  }
   ctx.restore();
+}
+
+/**
+ * A point read off the curve, as by hand: a dot on the curve, dashed lines across to the
+ * axes, and its coordinates beside it. Where the curve has no value, or runs out of the
+ * window, the coordinates say so at the top of the frame.
+ */
+function markReading(
+  ctx: CanvasRenderingContext2D,
+  trace: { x: number; y: number | null },
+  frame: Frame,
+  at: {
+    px: (value: number) => number;
+    py: (value: number) => number;
+    xLine: number;
+    yLine: number;
+  },
+  size: number,
+  opacity: number,
+): void {
+  const x = at.px(trace.x);
+  const y = trace.y === null ? null : at.py(trace.y);
+  const inside = y !== null && y >= frame.top && y <= frame.top + frame.height;
+  const text =
+    trace.y === null ? `no y at x = ${short(trace.x)}` : `(${short(trace.x)}, ${short(trace.y)})`;
+  ctx.strokeStyle = `rgba(${GRAPHITE}, 0.6)`;
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([3, 4]);
+  ctx.beginPath();
+  if (inside) {
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, at.xLine);
+    ctx.moveTo(x, y);
+    ctx.lineTo(at.yLine, y);
+  } else {
+    ctx.moveTo(x, frame.top);
+    ctx.lineTo(x, frame.top + frame.height);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  if (inside) {
+    ctx.fillStyle = `rgba(${GRAPHITE}, 1)`;
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.font = font(size);
+  const width = ctx.measureText(text).width;
+  const textTop = inside ? y - 8 - size : frame.top + 4;
+  const left = Math.max(frame.left + 2, Math.min(x + 8, frame.left + frame.width - width - 2));
+  const top = Math.max(frame.top + 2, Math.min(textTop, frame.top + frame.height - size - 2));
+  ctx.fillStyle = PAPER;
+  ctx.globalAlpha = 0.9 * opacity;
+  ctx.beginPath();
+  ctx.rect(left - 2, top - 1, width + 4, size + 2);
+  ctx.fill();
+  ctx.globalAlpha = opacity;
+  ctx.fillStyle = `rgba(${GRAPHITE}, 1)`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(text, left, top);
 }
 
 interface Box {

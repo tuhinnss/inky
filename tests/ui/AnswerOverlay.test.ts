@@ -10,8 +10,10 @@ import {
   isDragged,
   lineOnPage,
   LOW_CONFIDENCE,
+  readOff,
   roomTaken,
 } from '../../src/ui/AnswerOverlay';
+import { graphFrame } from '../../src/ui/plot';
 import { ink, inkColumn, strokesOf, turned } from '../fixtures/ink';
 
 /** An equation as the pipeline would hand it over, read with the given confidence. */
@@ -507,6 +509,26 @@ describe('a graph', () => {
     expect(darkest(unsure)).toBeLessThan(0.6 * darkest(sure));
   });
 
+  it('is read off where it is tapped, and put away by a tap elsewhere', () => {
+    const line = graphed('y=2×+1');
+    const fake = fakeLayer(1200);
+    const overlay = new AnswerOverlay(fake.layer);
+    overlay.setEquations([line]);
+    overlay.redraw();
+    const frame = graphFrame(lineOnPage(line.line), line.line.height, 1200, []);
+    // 60% across −10 to 10 is x = 2, where y = 2 × 2 + 1.
+    const at = { x: frame.left + 0.6 * frame.width, y: frame.top + frame.height / 2 };
+    expect(overlay.toggleReadingsAt(at)).toBe(true);
+    overlay.redraw();
+    expect(fake.texts.map((t) => t.text)).toContain('(2, 5)');
+
+    expect(overlay.toggleReadingsAt({ x: 5, y: 5 })).toBe(true);
+    overlay.redraw();
+    expect(fake.texts.map((t) => t.text)).not.toContain('(2, 5)');
+    // With nothing to put away, a tap on empty paper is left to the pen.
+    expect(overlay.toggleReadingsAt({ x: 5, y: 5 })).toBe(false);
+  });
+
   it('is gone once its line no longer asks for one', () => {
     const fake = fakeLayer(1200);
     const overlay = new AnswerOverlay(fake.layer);
@@ -528,6 +550,18 @@ describe('the room a line takes', () => {
   it('is only the writing while there is no answer', () => {
     const sum = equation('18+4');
     expect(roomTaken(sum)).toEqual(sum.line.bounds);
+  });
+});
+
+describe('readOff', () => {
+  it('reads a tap off at a round x', () => {
+    expect(readOff({ min: -10, max: 10 }, 0.5)).toBe(0);
+    expect(readOff({ min: -10, max: 10 }, 0.5694)).toBe(1.4);
+    expect(readOff({ min: -5, max: 5 }, 0.25)).toBe(-2.5);
+  });
+
+  it('stays inside the window', () => {
+    expect(readOff({ min: -10, max: 10 }, 1.2)).toBe(10);
   });
 });
 
