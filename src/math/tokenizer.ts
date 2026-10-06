@@ -11,9 +11,17 @@ export type BinaryOperator = '+' | '-' | '×' | '÷';
 /** The one variable a handwritten line can hold. See src/app/variables.ts. */
 export const VARIABLE = 'x';
 
+/**
+ * Raised digits, as a power is written: x², 2¹⁰. Each is one character, like every other
+ * symbol, so positions still count symbols. See src/app/powers.ts for how they are read.
+ */
+export const SUPERSCRIPTS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+
 export type Token =
   | { kind: 'number'; value: number; text: string; position: number }
   | { kind: 'variable'; name: string; position: number }
+  /** A power: the raised digits after a number or x, as a whole number. */
+  | { kind: 'exponent'; value: number; position: number }
   | { kind: 'operator'; operator: BinaryOperator; position: number }
   | { kind: 'paren'; paren: '(' | ')'; position: number };
 
@@ -88,6 +96,17 @@ export function tokenize(input: string): TokenizeResult {
         };
       }
       tokens.push({ kind: 'number', value: Number(text), text, position: start });
+      continue;
+    }
+
+    if (SUPERSCRIPTS.includes(char)) {
+      const start = index;
+      let value = 0;
+      while (index < input.length && SUPERSCRIPTS.includes(input[index])) {
+        value = value * 10 + SUPERSCRIPTS.indexOf(input[index]);
+        index++;
+      }
+      tokens.push({ kind: 'exponent', value, position: start });
       continue;
     }
 

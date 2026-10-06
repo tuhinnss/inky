@@ -4,7 +4,8 @@
  *   expression := term    (('+' | '-') term)*
  *   term       := unary   (('×' | '÷') unary)*
  *   unary      := '-' unary | product
- *   product    := primary VARIABLE*
+ *   product    := power (VARIABLE EXPONENT?)*
+ *   power      := primary EXPONENT?
  *   primary    := NUMBER | VARIABLE | '(' expression ')'
  *
  * One function per grammar rule. Precedence falls out of the nesting: `term` binds
@@ -15,6 +16,8 @@
  * together, a number and its x are one quantity, so they bind tighter than "×" and "÷":
  * `1 ÷ 2x` divides by 2x, the way it is read on paper.
  *
+ * A power binds tightest of all: `2x²` is 2 × (x²), and `−x²` is −(x²), as in algebra.
+ *
  * Nothing here throws. Malformed input comes back as a value the caller can render.
  */
 
@@ -24,6 +27,7 @@ export type Node =
   | { type: 'number'; value: number }
   | { type: 'variable'; name: string; position: number }
   | { type: 'negate'; operand: Node; position: number }
+  | { type: 'power'; base: Node; exponent: number; position: number }
   | { type: 'binary'; operator: BinaryOperator; left: Node; right: Node; position: number };
 
 export type ParseResult = { ok: true; ast: Node } | { ok: false; error: ExpressionError };
@@ -102,15 +106,24 @@ class Parser {
   }
 
   private product(): Node {
-    let left = this.primary();
+    let left = this.power(this.primary());
     for (;;) {
       const token = this.peek();
       if (token?.kind !== 'variable') break;
       this.index++;
-      const right: Node = { type: 'variable', name: token.name, position: token.position };
+      const variable: Node = { type: 'variable', name: token.name, position: token.position };
+      const right = this.power(variable);
       left = { type: 'binary', operator: '×', left, right, position: token.position };
     }
     return left;
+  }
+
+  /** `base`, raised to the power written after it, if one is. */
+  private power(base: Node): Node {
+    const token = this.peek();
+    if (token?.kind !== 'exponent') return base;
+    this.index++;
+    return { type: 'power', base, exponent: token.value, position: token.position };
   }
 
   private primary(): Node {
@@ -148,6 +161,10 @@ class Parser {
       }
       this.index++;
       return inner;
+    }
+
+    if (token.kind === 'exponent') {
+      this.fail('unexpected-token', token.position, 'A power needs a number or x before it');
     }
 
     if (token.kind === 'operator') {

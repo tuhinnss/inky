@@ -98,6 +98,7 @@ export { parse, type Node, type ParseResult } from './parser';
 export { evaluateNode, type EvaluationResult } from './evaluator';
 export {
   tokenize,
+  SUPERSCRIPTS,
   VARIABLE,
   type BinaryOperator,
   type ExpressionError,

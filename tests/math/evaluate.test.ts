@@ -370,3 +370,44 @@ describe('compile', () => {
     }
   });
 });
+
+describe('powers', () => {
+  const x = (value: number) => new Map([['x', value]]);
+
+  it('are read from raised digits, as one token', () => {
+    const result = tokenize('2¹⁰');
+    expect(result.ok && result.tokens).toEqual([
+      { kind: 'number', value: 2, text: '2', position: 0 },
+      { kind: 'exponent', value: 10, position: 1 },
+    ]);
+  });
+
+  it('raise a number or x to the power written', () => {
+    expect(value('3²+4²')).toBe(25);
+    expect(value('2¹⁰')).toBe(1024);
+    expect(value('5⁰')).toBe(1);
+    expect(evaluate('x²', x(3))).toMatchObject({ status: 'ok', value: 9 });
+  });
+
+  it('bind tighter than anything else, as in algebra', () => {
+    expect(evaluate('2x²', x(3))).toMatchObject({ status: 'ok', value: 18 });
+    expect(evaluate('-x²', x(3))).toMatchObject({ status: 'ok', value: -9 });
+    expect(evaluate('x²-4x+3', x(1))).toMatchObject({ status: 'ok', value: 0 });
+    expect(value('2×3²')).toBe(18);
+    expect(value('(1+2)²')).toBe(9);
+  });
+
+  it('need something to raise', () => {
+    expect(errorCode('²')).toBe('unexpected-token');
+    expect(errorCode('2+²')).toBe('unexpected-token');
+  });
+
+  it('overflow like any other result too large', () => {
+    expect(evaluate('9⁹⁹⁹').status).toBe('overflow');
+  });
+
+  it('are worked out at any x in a graph', () => {
+    const parabola = compile('x²-4');
+    expect(parabola.ok && parabola.at(3)).toBe(5);
+  });
+});

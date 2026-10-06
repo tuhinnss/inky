@@ -52,6 +52,8 @@ export function evaluateNode(
       pending.push({ node, operandsReady: true });
       if (node.type === 'negate') {
         pending.push({ node: node.operand, operandsReady: false });
+      } else if (node.type === 'power') {
+        pending.push({ node: node.base, operandsReady: false });
       } else {
         // Pushed right then left, so that left is popped, and therefore evaluated, first.
         pending.push({ node: node.right, operandsReady: false });
@@ -60,6 +62,8 @@ export function evaluateNode(
       continue;
     } else if (node.type === 'negate') {
       value = -values.pop()!;
+    } else if (node.type === 'power') {
+      value = values.pop()! ** node.exponent;
     } else {
       const right = values.pop()!;
       const left = values.pop()!;
