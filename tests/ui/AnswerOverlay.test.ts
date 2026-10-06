@@ -111,6 +111,9 @@ function fakeLayer(width: number) {
       }
     },
     setLineDash: (segments: number[]) => (dash = segments),
+    arc: () => undefined,
+    fill: () => undefined,
+    strokeText: () => undefined,
     translate: (x: number, y: number) => shifts.push([x, y]),
     rotate: (angle: number) => turns.push(angle),
     measureText: (text: string) => ({ width: widthOf(text, ctx.font) }),
@@ -455,6 +458,11 @@ describe('a graph', () => {
     const { texts } = show([line]);
     expect(texts.map((t) => t.text)).toEqual(expect.arrayContaining(['x', 'y', '0', '5', '−5']));
     for (const text of texts) expect(text.y).toBeGreaterThan(line.line.bounds.maxY);
+  });
+
+  it('marks where it crosses the axes, with their coordinates', () => {
+    const labels = show([graphed('y=2×+1')]).texts.map((t) => t.text);
+    expect(labels).toEqual(expect.arrayContaining(['(−0.5, 0)', '(0, 1)']));
   });
 
   it('is numbered on the y axis it was fitted to', () => {

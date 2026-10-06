@@ -6,6 +6,9 @@
 /** Pencil graphite, as `r, g, b` for use with varying opacity. */
 export const GRAPHITE = '74, 78, 87';
 
+/** The paper, for a halo that keeps small writing clear of the ruling under it. */
+export const PAPER = '#fafbf7';
+
 /** Kalam's light weight: nearer to a pencil line than the regular weight is. */
 const FONT = '300 {size}px Kalam, "Segoe Print", "Bradley Hand", cursive';
 
