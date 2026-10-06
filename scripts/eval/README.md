@@ -88,7 +88,9 @@ handwritten x is read as `×`, which is x where a number belongs, and how often 
 inside expressions, with and without `3x` for `3 × x`. For graphs: how often a lone y is read as
 `×`, the one reading that could take it for x; how many real `y = …` lines using x are read as the
 right graph; each real lone y set at the start of those lines, in place of the writer's own; and
-how many other expressions are taken for a graph when they are not.
+how many other expressions are taken for a graph when they are not. For powers, written as raised
+digits: how many expressions with them are read exactly, how many of their raised digits are read
+as powers, and in how many other expressions a digit is taken for one.
 
 | Variable           | Default                             | Meaning                                 |
 | ------------------ | ----------------------------------- | --------------------------------------- |
@@ -101,4 +103,5 @@ Expected: 86.6% of expressions read exactly right, 91.8% grouped into the right 
 of symbols read right within those; `÷` set into expressions read right 92.6% of the time; a lone
 x read as `×` 82.8% of the time, and x read as x in 89.2% of expressions grouped right; a lone y
 read as `×` 5.1% of the time, 2 of the 4 real graph lines read right, real y set into them read
-as the right graph 95.8% of the time, and 3 of 604 other expressions taken for a graph.
+as the right graph 95.8% of the time, and 3 of 604 other expressions taken for a graph; 97.1% of
+raised digits read as powers, in none of 608 other expressions a digit taken for one.
