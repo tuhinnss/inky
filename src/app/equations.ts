@@ -3,10 +3,12 @@
  */
 
 import type { Line } from '../layout';
-import { compile, evaluate, EQUALS, VARIABLE, type Evaluation } from '../math';
+import { compile, evaluate, EQUALS, SUPERSCRIPTS, VARIABLE, type Evaluation } from '../math';
 import { interpret, type Reading } from '../recognition/interpret';
+import type { Superscript } from '../recognition/model';
 import { assembleColumn } from './columnSum';
 import { GRAPH_VARIABLE, graphOf, hasGraphForm, readGraph, type Graph } from './graphs';
+import { readPowers } from './powers';
 import { definitionOf, readVariables, type Definition } from './variables';
 
 /** Model output per symbol, keyed by `SymbolGroup.key`. */
@@ -61,13 +63,19 @@ function readLine(
     const interpreted = line.symbols.map((symbol) =>
       interpret(symbol, line, cache.get(symbol.key)),
     );
-    const read = interpreted.map((reading) => reading.symbol);
+    const read = readPowers(
+      interpreted.map((reading) => reading.symbol),
+      line,
+    );
     const symbols = readGraph(readVariables(read, { graph: hasGraphForm(read) }));
-    // x and y are read by their place on the line. x is a "×" the model was sure of to
-    // some degree; a y can be anything the model took it for, so its reading says nothing.
+    // x, y and powers are read by their place on the line. x is a "×" the model was sure of
+    // to some degree, and a power a digit; a y can be anything the model took it for, so
+    // its reading says nothing.
     const readings = interpreted.map((reading, i): Reading => {
-      if (symbols[i] === GRAPH_VARIABLE) return { symbol: GRAPH_VARIABLE, confidence: 1 };
-      if (symbols[i] === VARIABLE) return { ...reading, symbol: VARIABLE };
+      const symbol = symbols[i];
+      if (symbol === GRAPH_VARIABLE) return { symbol: GRAPH_VARIABLE, confidence: 1 };
+      if (symbol === VARIABLE) return { ...reading, symbol: VARIABLE };
+      if (SUPERSCRIPTS.includes(symbol)) return { ...reading, symbol: symbol as Superscript };
       return reading;
     });
     return { readings, expression: symbols.join('') };

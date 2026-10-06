@@ -186,6 +186,20 @@ const GLYPHS: Readonly<Record<string, Glyph>> = {
     ],
   ],
   '.': [[[0.5, 0.5]]],
+  // A power, as in x²: a 2 written small and raised.
+  '²': [
+    [
+      [0.14, 0.26],
+      [0.26, 0.07],
+      [0.5, 0],
+      [0.76, 0.08],
+      [0.86, 0.28],
+      [0.74, 0.5],
+      [0.44, 0.75],
+      [0.1, 1],
+      [0.92, 1],
+    ],
+  ],
   // The letter of a graph's line, as most people print it: the short arm, then the long
   // one carried on down below the line into the tail.
   y: [
@@ -219,6 +233,8 @@ const SHAPES: Readonly<Record<string, Shape>> = {
   '=': { width: 0.55, height: 0.32, centre: 0.5 },
   '.': { width: 0.06, height: 0, centre: 0.97 },
   '1': { width: 0.3, height: 1, centre: 0.5 },
+  // Raised to the top of the line and well under half a digit tall.
+  '²': { width: 0.3, height: 0.42, centre: 0.1 },
   // A small letter: its arms reach halfway up the digits, its tail a third below them.
   y: { width: 0.5, height: 0.85, centre: 0.92 },
 };

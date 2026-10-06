@@ -17,13 +17,16 @@
  * over from there. `x = x + 1` uses the x defined above it.
  */
 
-import { EQUALS, VARIABLE } from '../math';
+import { EQUALS, SUPERSCRIPTS, VARIABLE } from '../math';
 
 const TIMES = '×';
 /** After these, a number is expected rather than an operator. */
 const EXPECTS_NUMBER = new Set(['+', '-', TIMES, '÷', EQUALS, '(']);
-/** None of these can begin a number, so a "×" just before one has nothing to multiply. */
-const CANNOT_BEGIN_NUMBER = new Set(['+', '÷', EQUALS, ')']);
+/**
+ * None of these can begin a number, so a "×" just before one has nothing to multiply: a
+ * power, as in 2x², raises what is before it.
+ */
+const CANNOT_BEGIN_NUMBER = new Set(['+', '÷', EQUALS, ')', ...SUPERSCRIPTS]);
 
 export interface ReadOptions {
   /** The line is a graph's, `y = …`: a "×" before "−" is then x as well. */

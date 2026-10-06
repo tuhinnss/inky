@@ -32,7 +32,10 @@ export type ModelSymbol = (typeof MODEL_SYMBOLS)[number];
  * Every symbol the app can read. The decimal point comes from geometry, not the model,
  * and x is a "×" standing where a number belongs (see app/variables.ts).
  */
-export type RecognisedSymbol = ModelSymbol | '.' | 'x' | 'y';
+/** A raised digit: one digit of a power, as in x². */
+export type Superscript = '⁰' | '¹' | '²' | '³' | '⁴' | '⁵' | '⁶' | '⁷' | '⁸' | '⁹';
+
+export type RecognisedSymbol = ModelSymbol | '.' | 'x' | 'y' | Superscript;
 
 export const MODEL = {
   /** Relative to the app's base URL. */

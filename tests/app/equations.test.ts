@@ -17,7 +17,7 @@ function sure(symbol: string, confidence = 0.99): Float32Array {
  * letters, and reads a handwritten y most often as a 9.
  */
 type Reads = Readonly<Record<string, string>>;
-const MODEL_READS: Reads = { y: '9' };
+const MODEL_READS: Reads = { y: '9', '²': '2' };
 
 /** A cache as if the model had read every symbol of `written` correctly. */
 function cacheFor(
@@ -224,6 +224,28 @@ describe('graphs on a page', () => {
     const [line] = page(['y=21', { y: '4' }]);
     expect(line.expression).toBe('4=21');
     expect(line.graph).toBeUndefined();
+  });
+});
+
+describe('powers on a page', () => {
+  it('reads a raised digit as a power', () => {
+    expect(read('×²').expression).toBe('x²');
+    expect(read('2×²').expression).toBe('2x²');
+    expect(read('×²').readings[1].symbol).toBe('²');
+  });
+
+  it('works out a sum with powers', () => {
+    expect(read('3²+4²=').evaluation).toMatchObject({ status: 'ok', value: 25 });
+  });
+
+  it('takes no digit on the line for a power', () => {
+    expect(read('12+34=').expression).toBe('12+34=');
+  });
+
+  it('draws the graph of a quadratic', () => {
+    const [line] = evaluatePage([{ ...read('y=×²-4×+3'), id: 1 }]);
+    expect(line.expression).toBe('y=x²-4x+3');
+    expect(line.graph).toEqual({ body: 'x²-4x+3' });
   });
 });
 

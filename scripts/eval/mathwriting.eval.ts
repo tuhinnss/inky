@@ -7,7 +7,8 @@ import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { evaluatePage, readEquation, type Equation } from '../../src/app/equations';
-import { isScribble } from '../../src/ink';
+import { SUPERSCRIPTS } from '../../src/math';
+import { isScribble, scratchedOut } from '../../src/ink';
 import { layoutPage, segmentLine, type SymbolGroup } from '../../src/layout';
 import { interpret } from '../../src/recognition/interpret';
 import { classify } from '../../tests/recognition/helpers';
@@ -62,7 +63,11 @@ describe.skipIf(!existsSync(FILE))(
       // Inks with the letters x and y are measured on their own, in sections 4 and 5.
       const hasX = (ink: { label: string }): boolean => ink.label.includes('x');
       const hasY = (ink: { label: string }): boolean => ink.label.includes('y');
-      const hasLetter = (ink: { label: string }): boolean => hasX(ink) || hasY(ink);
+      // Inks with powers, x², are measured in section 6.
+      const hasPower = (ink: { label: string }): boolean =>
+        [...ink.label].some((c) => SUPERSCRIPTS.includes(c));
+      const hasLetter = (ink: { label: string }): boolean =>
+        hasX(ink) || hasY(ink) || hasPower(ink);
       const symbols = inks.filter((ink) => ink.kind === 'symbol' && !hasLetter(ink));
       const expressions = inks.filter((ink) => ink.kind === 'expression' && !hasLetter(ink));
       const report: string[] = [
@@ -197,7 +202,7 @@ describe.skipIf(!existsSync(FILE))(
         (line) => interpret(line.symbols[0], line, cache.get(line.symbols[0].key)).symbol === '×',
       ).length;
       const xExpressions = inks.filter(
-        (ink) => ink.kind === 'expression' && hasX(ink) && !hasY(ink),
+        (ink) => ink.kind === 'expression' && hasX(ink) && !hasY(ink) && !hasPower(ink),
       );
       /** "3x" or "xx": x multiplied with no sign, read since graphs came in. */
       const implied = (label: string): boolean => /[\d.x]x/.test(label);
@@ -245,7 +250,10 @@ describe.skipIf(!existsSync(FILE))(
           interpret(line.symbols[0], line, cache.get(line.symbols[0].key)).symbol === '×',
       ).length;
       const isGraphLabel = (label: string): boolean =>
-        label.startsWith('y=') && label.slice(2).includes('x') && !label.slice(2).includes('=');
+        !hasPower({ label }) &&
+        label.startsWith('y=') &&
+        label.slice(2).includes('x') &&
+        !label.slice(2).includes('=');
       const graphInks = inks.filter((ink) => ink.kind === 'expression' && isGraphLabel(ink.label));
       /** The line read on a page of its own, with x and y read as the page would. */
       const readPage = (lines: ReturnType<typeof layoutPage>): Equation | null =>
@@ -282,7 +290,9 @@ describe.skipIf(!existsSync(FILE))(
       );
       const yTrialsRead = yTrials.filter((t) => isGraphOf(readPage(t.lines), t.label)).length;
       // And no line that is not a graph's should be taken for one.
-      const notGraphs = inks.filter((ink) => ink.kind === 'expression' && !isGraphLabel(ink.label));
+      const notGraphs = inks.filter(
+        (ink) => ink.kind === 'expression' && !isGraphLabel(ink.label) && !hasPower(ink),
+      );
       const notGraphPages = notGraphs.map((ink) => layoutPage(toStrokes(ink, SIZE, PEN)));
       await classifyAll(
         notGraphPages
@@ -294,6 +304,45 @@ describe.skipIf(!existsSync(FILE))(
       notGraphs.forEach((ink, i) => {
         const read = readPage(notGraphPages[i]);
         if (read?.graph) falseGraphs.push(`  ${ink.label.padEnd(22)} read as ${read.expression}`);
+      });
+
+      // 6. Powers: a digit written raised beside a number or x, as in x² and 3².
+      const powerInks = inks.filter((ink) => ink.kind === 'expression' && hasPower(ink));
+      const powerPages = powerInks.map((ink) => layoutPage(toStrokes(ink, SIZE, PEN)));
+      await classifyAll(
+        powerPages
+          .flatMap((lines) => lines.flatMap((line) => line.symbols))
+          .filter((s) => s.kind === 'shape'),
+        cache,
+      );
+      let powerExact = 0;
+      let powerSeen = 0;
+      let powerRead = 0;
+      let powerGrouped = 0;
+      const powerExamples: string[] = [];
+      powerInks.forEach((ink, i) => {
+        const read = readPage(powerPages[i])?.expression ?? '';
+        if (read === ink.label) powerExact++;
+        else if (powerExamples.length < 12)
+          powerExamples.push(`  ${ink.label.padEnd(22)} read as ${read}`);
+        const label = [...ink.label];
+        const got = [...read];
+        if (got.length !== label.length) return;
+        powerGrouped++;
+        label.forEach((written, k) => {
+          if (!SUPERSCRIPTS.includes(written)) return;
+          powerSeen++;
+          if (got[k] === written || SUPERSCRIPTS.includes(got[k])) powerRead++;
+        });
+      });
+      // Digits taken for powers in all the other expressions.
+      const plainExpressions = inks.filter((ink) => ink.kind === 'expression' && !hasPower(ink));
+      const plainPages = plainExpressions.map((ink) => layoutPage(toStrokes(ink, SIZE, PEN)));
+      const falsePowers: string[] = [];
+      plainExpressions.forEach((ink, i) => {
+        const read = readPage(plainPages[i])?.expression ?? '';
+        if ([...read].some((c) => SUPERSCRIPTS.includes(c)))
+          falsePowers.push(`  ${ink.label.padEnd(22)} read as ${read}`);
       });
 
       const table = (rows: Map<string, Tally>, heading: string): string[] => {
@@ -358,14 +407,34 @@ describe.skipIf(!existsSync(FILE))(
         `  each lone y set at the start of those: ${yTrialsRead}/${yTrials.length} = ${pct(yTrialsRead, yTrials.length)} read as the right graph`,
         `  other expressions taken for a graph: ${falseGraphs.length} of ${notGraphs.length}`,
         ...falseGraphs.slice(0, 10),
+        '',
+        `Powers, written raised: ${powerInks.length} expressions using them`,
+        `  read exactly right: ${powerExact}/${powerInks.length} = ${pct(powerExact, powerInks.length)}`,
+        `  grouped into the right symbols: ${powerGrouped}/${powerInks.length} = ${pct(powerGrouped, powerInks.length)}`,
+        `  each raised digit read as a power, in those: ${powerRead}/${powerSeen} = ${pct(powerRead, powerSeen)}`,
+        ...powerExamples,
+        `  other expressions with a digit taken for a power: ${falsePowers.length} of ${plainExpressions.length}`,
+        ...falsePowers.slice(0, 10),
       );
 
-      // Writing must never be taken for a scribble, which would rub out what is under it.
-      const strokes = inks.flatMap((ink) => toStrokes(ink, SIZE, PEN));
-      const scribbles = strokes.filter((stroke) => isScribble(stroke.points)).length;
+      // Writing must never be taken for a scribble that rubs out what is under it. One that
+      // covers nothing is kept as ink, so it does no harm.
+      let strokeCount = 0;
+      let scribbles = 0;
+      let harmful = 0;
+      for (const ink of inks) {
+        const strokes = toStrokes(ink, SIZE, PEN);
+        strokeCount += strokes.length;
+        for (const stroke of strokes) {
+          if (!isScribble(stroke.points)) continue;
+          scribbles++;
+          const others = strokes.filter((other) => other !== stroke);
+          if (scratchedOut(stroke.points, PEN, others).length > 0) harmful++;
+        }
+      }
       report.push(
         '',
-        `Strokes taken for a scratch-out scribble: ${scribbles} of ${strokes.length}`,
+        `Strokes taken for a scratch-out scribble: ${scribbles} of ${strokeCount}, of which ${harmful} would rub out writing`,
       );
 
       const text = report.join('\n');

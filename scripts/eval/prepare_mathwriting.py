@@ -3,8 +3,9 @@
 MathWriting is 230,000 handwritten expressions, nearly all of them algebra and calculus that
 CalcInk does not set out to read. This reads the archive once, straight from the .tgz without
 unpacking it, and keeps only the inks written by people whose label uses nothing but CalcInk's
-vocabulary: digits, + − × ÷ =, the decimal point, and the letters x and y of variables and
-graphs. Each is written to one line of a JSON Lines file, with its strokes.
+vocabulary: digits, + − × ÷ =, the decimal point, the letters x and y of variables and
+graphs, and powers written as raised digits (x^{2} becomes x²). Each is written to one line of
+a JSON Lines file, with its strokes.
 
     python scripts/eval/prepare_mathwriting.py mathwriting-2024.tgz data/mathwriting/arithmetic.jsonl
 
@@ -26,12 +27,20 @@ VOCABULARY = {**{d: d for d in '0123456789'}, '+': '+', '-': '-', '=': '=', '.':
               '\\times': '×', '\\div': '÷', 'x': 'x', 'y': 'y'}
 
 
+# A power in LaTeX, ^{10} or ^2, and the raised digits CalcInk writes it with.
+POWER = re.compile(r'\^\{(\d+)\}|\^(\d)')
+SUPERSCRIPTS = dict(zip('0123456789', '⁰¹²³⁴⁵⁶⁷⁸⁹'))
+
+
 def expression_of(latex: str):
     """The expression as CalcInk would write it, or None if any of it is outside its reach."""
-    tokens = TOKEN.findall(latex.replace(' ', ''))
-    if not tokens or any(token not in VOCABULARY for token in tokens):
+    raised = POWER.sub(lambda m: ''.join(SUPERSCRIPTS[d] for d in (m.group(1) or m.group(2))),
+                       latex.replace(' ', ''))
+    tokens = TOKEN.findall(raised)
+    known = set(VOCABULARY) | set(SUPERSCRIPTS.values())
+    if not tokens or any(token not in known for token in tokens):
         return None
-    return ''.join(VOCABULARY[token] for token in tokens)
+    return ''.join(VOCABULARY.get(token, token) for token in tokens)
 
 
 def read_ink(data: bytes):
