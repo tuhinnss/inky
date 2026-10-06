@@ -201,6 +201,16 @@ describe('what is pencilled in after the "="', () => {
   });
 });
 
+describe('the solution of an equation', () => {
+  it('is what x is, pencilled in after the equation', () => {
+    const solved = { ...equation('18+4'), solution: { kind: 'roots' as const, values: [2, 3] } };
+    expect(answerText(solved)).toBe('x = 2 or 3');
+    const { texts } = show([solved]);
+    expect(texts.map((t) => t.text)).toEqual(['x = 2 or 3']);
+    expect(texts[0].left).toBeGreaterThan(solved.line.bounds.maxX);
+  });
+});
+
 describe('how dark an answer is drawn', () => {
   it('is firm for a sure reading and faint for a doubtful one', () => {
     expect(answerOpacity(1)).toBeCloseTo(0.95);

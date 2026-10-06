@@ -48,6 +48,14 @@ describe('outcomeOf', () => {
     expect(cues.next([graph('2x+3')])).toBe('answer');
   });
 
+  it('calls a solved equation an answer, and one beyond solving a problem', () => {
+    const solved = (solution: Equation['solution']) =>
+      ({ id: 1, expression: 'x²=9', evaluation: null, solution }) as Equation;
+    expect(outcomeOf(solved({ kind: 'roots', values: [-3, 3] }))?.cue).toBe('answer');
+    expect(outcomeOf(solved({ kind: 'none' }))?.cue).toBe('answer');
+    expect(outcomeOf(solved({ kind: 'beyond' }))?.cue).toBe('problem');
+  });
+
   it('calls a malformed sum, division by zero and overflow problems', () => {
     expect(outcomeOf(line(1, '18+='))?.cue).toBe('problem');
     expect(outcomeOf(line(1, '1÷0='))?.cue).toBe('problem');

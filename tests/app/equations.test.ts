@@ -249,6 +249,28 @@ describe('powers on a page', () => {
   });
 });
 
+describe('equations to solve on a page', () => {
+  const page = (...lines: string[]) =>
+    evaluatePage(lines.map((text, i) => ({ ...read(text), id: i + 1 })));
+
+  it('solves a quadratic written with a power', () => {
+    const [line] = page('×²-5×+6=0');
+    expect(line.expression).toBe('x²-5x+6=0');
+    expect(line.solution).toEqual({ kind: 'roots', values: [2, 3] });
+    expect(line.evaluation).toBeNull();
+  });
+
+  it('solves for x with x on the right', () => {
+    expect(page('10=5×')[0].solution).toEqual({ kind: 'roots', values: [2] });
+  });
+
+  it('still takes x = 9 as giving x a value, and x² = 9 as an equation', () => {
+    const [definition, equation] = page('×=9', '×²=9');
+    expect(definition.definition).toEqual({ name: 'x', value: 9 });
+    expect(equation.solution).toEqual({ kind: 'roots', values: [-3, 3] });
+  });
+});
+
 describe('reading a column sum', () => {
   /** Lays out a column and reads it as if the model had got every symbol right. */
   function readColumn(rows: string[], options: Parameters<typeof inkColumn>[1] = {}) {

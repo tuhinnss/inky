@@ -16,10 +16,15 @@ export type Cue = 'answer' | 'problem';
 
 /** What the line says now, as far as a cue is concerned, or null when it says nothing yet. */
 export function outcomeOf(equation: Equation): { cue: Cue; text: string } | null {
-  const { evaluation, definition, graph } = equation;
+  const { evaluation, definition, graph, solution } = equation;
   // "x = 10" taken in, or a graph drawn, is an answer of sorts: the notebook understood.
   if (definition) return { cue: 'answer', text: `${definition.name}=${definition.value}` };
   if (graph) return { cue: 'answer', text: `graph:${graph.body}` };
+  if (solution) {
+    // Solved, or shown to have no solution, is an answer; beyond what is solved is not.
+    const text = `solution:${JSON.stringify(solution)}`;
+    return { cue: solution.kind === 'beyond' ? 'problem' : 'answer', text };
+  }
   if (!evaluation) return null;
   switch (evaluation.status) {
     case 'ok':

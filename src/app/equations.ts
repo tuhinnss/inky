@@ -9,6 +9,7 @@ import type { Superscript } from '../recognition/model';
 import { assembleColumn } from './columnSum';
 import { GRAPH_VARIABLE, graphOf, hasGraphForm, readGraph, type Graph } from './graphs';
 import { readPowers } from './powers';
+import { equationIn, solve, type Solution } from './solve';
 import { definitionOf, readVariables, type Definition } from './variables';
 
 /** Model output per symbol, keyed by `SymbolGroup.key`. */
@@ -39,6 +40,8 @@ export interface Equation {
   definition?: Definition;
   /** Set when the line asks for a graph, as in "y=2x+1". */
   graph?: Graph;
+  /** Set when the line is an equation in x to solve, as in "x²-5x+6=0". */
+  solution?: Solution;
   /** The weakest reading on the line. An answer is only as sure as its least sure symbol. */
   confidence: number;
 }
@@ -173,6 +176,14 @@ export function evaluatePage(equations: readonly Equation[]): Equation[] {
         };
       }
       return { ...equation, evaluation };
+    }
+
+    const sides = equationIn(equation.expression);
+    if (sides) {
+      const solved = solve(sides.left, sides.right);
+      return solved.ok
+        ? { ...equation, evaluation: null, solution: solved.solution }
+        : { ...equation, evaluation: { status: 'error', error: solved.error } };
     }
 
     if (!equation.expression.endsWith(EQUALS) || !equation.expression.includes(VARIABLE)) {

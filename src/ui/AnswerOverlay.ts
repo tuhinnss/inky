@@ -3,6 +3,7 @@ import type { CanvasLayer } from '../canvas/CanvasLayer';
 import type { Drag } from '../canvas/InkCanvas';
 import type { Bounds } from '../ink';
 import type { Line } from '../layout';
+import { solutionText } from '../app/solve';
 import { compile } from '../math';
 import type { Reading } from '../recognition/interpret';
 import { drawGraph } from './drawGraph';
@@ -63,7 +64,8 @@ export function lineOnPage(line: Line): Bounds {
  * why and the place for the answer stays empty.
  */
 export function answerText(equation: Equation): string | null {
-  const { evaluation } = equation;
+  const { evaluation, solution } = equation;
+  if (solution) return solutionText(solution);
   if (!evaluation || evaluation.status === 'error') return null;
   return evaluation.text;
 }
@@ -285,10 +287,13 @@ export class AnswerOverlay {
     const { line } = equation;
     const equals = line.symbols[line.symbols.length - 1].bounds;
     const isNumber = equation.evaluation?.status === 'ok';
+    // A solution is written a little smaller than an answer and further off: "x = 2 or 3"
+    // follows a finished equation, not an "=" waiting for it.
+    const solved = equation.solution !== undefined;
 
     // Match the size of the handwriting; words are set smaller than numbers.
-    let size = Math.min(220, Math.max(22, line.height * (isNumber ? 1.0 : 0.6)));
-    let x = equals.maxX + line.height * 0.34;
+    let size = Math.min(220, Math.max(22, line.height * (isNumber ? 1.0 : solved ? 0.75 : 0.6)));
+    let x = equals.maxX + line.height * (solved ? 0.8 : 0.34);
     let y = (equals.minY + equals.maxY) / 2;
 
     ctx.textBaseline = 'middle';
@@ -327,7 +332,8 @@ export class AnswerOverlay {
     ctx.clip();
 
     // A doubtful answer is the same answer, written more faintly.
-    ctx.fillStyle = `rgba(${GRAPHITE}, ${isNumber ? answerOpacity(equation.confidence) : 0.78})`;
+    const sure = isNumber || (solved && equation.solution?.kind !== 'beyond');
+    ctx.fillStyle = `rgba(${GRAPHITE}, ${sure ? answerOpacity(equation.confidence) : 0.78})`;
     // Kalam's digits sit a little above the middle of its line box.
     ctx.fillText(text, x, y + size * 0.06);
     this.answerBoxes.set(equation.id, {
