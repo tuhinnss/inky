@@ -5,6 +5,7 @@ import {
   CueTracker,
   outcomeOf,
   scratchLevel,
+  TUNED_VOLUME,
   VOLUME,
   volumeGain,
   volumeLabel,
@@ -136,8 +137,13 @@ describe('the volume', () => {
     expect(volumeLabel(35)).toBe('35%');
   });
 
-  it('plays the sounds as tuned at the initial volume', () => {
-    expect(volumeGain(VOLUME.initial)).toBeCloseTo(1, 1);
+  it('plays the sounds as tuned at 70%', () => {
+    expect(volumeGain(TUNED_VOLUME)).toBeCloseTo(1, 1);
+  });
+
+  it('starts quietly, at 20%', () => {
+    expect(VOLUME.initial).toBe(20);
+    expect(volumeGain(VOLUME.initial)).toBeLessThan(0.1);
   });
 
   it('changes along the whole slider, not just its start', () => {

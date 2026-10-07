@@ -93,8 +93,8 @@ answer with it, or press Delete. Tap elsewhere to let it go.
 
 You hear the pencil as you write and the eraser as you rub. When an answer is written in, there is
 a soft note, and on Android a light tap; a sum that does not work gets two low notes. Press the
-speaker at the foot of the tools to set the volume, from off to 100%, and to switch vibration on or
-off. Let go of the slider and you hear a note at the new volume. Both are remembered.
+speaker at the foot of the tools to set the volume, from off to 100% (it starts at 20%), and to
+switch vibration on or off. Let go of the slider and you hear a note at the new volume. Both are remembered.
 
 To see what the notebook read, tap any number or sign of a sum, or its answer. Each symbol is
 labelled with what it was read as; a fainter label means it was unsure. Tap again to hide them.
@@ -155,7 +155,7 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 | `npm run dev`            | Start the dev server                                                                                 |
 | `npm run build`          | Type-check, then build to `dist/`                                                                    |
 | `npm run preview`        | Serve the production build locally                                                                   |
-| `npm test`               | Run the 881 unit and integration tests once                                                          |
+| `npm test`               | Run the 882 unit and integration tests once                                                          |
 | `npm run typecheck`      | Type-check without building                                                                          |
 | `npm run lint`           | Lint the source. Fails on `eval` or `new Function`                                                   |
 | `npm run format`         | Format the source with Prettier                                                                      |

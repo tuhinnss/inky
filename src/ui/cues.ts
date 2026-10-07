@@ -90,7 +90,9 @@ export const VIBRATION: Readonly<Record<Cue | 'scratch-out', number | number[]>>
 };
 
 /** The volume, in percent, as the slider in the speaker's menu sets it. 0 is silent. */
-export const VOLUME: SizeRange = { min: 0, max: 100, step: 5, initial: 70 };
+export const VOLUME: SizeRange = { min: 0, max: 100, step: 5, initial: 20 };
+/** The volume at which every sound plays as it was tuned, at a gain of about 1. */
+export const TUNED_VOLUME = 70;
 
 export function volumeLabel(volume: number): string {
   return volume === 0 ? 'Off' : `${volume}%`;
@@ -99,8 +101,8 @@ export function volumeLabel(volume: number): string {
 /**
  * The gain for a volume. Ears hear loudness on a roughly logarithmic scale, so a gain in
  * step with the slider would do nearly all its changing in the first quarter of it.
- * Squaring spreads the change along the whole slider. At the initial 70% it is about 1:
- * the sounds as they were tuned.
+ * Squaring spreads the change along the whole slider. At 70% it is about 1: the sounds as
+ * they were tuned. The notebook starts at 20%, a gain of 0.08: quiet, until it is turned up.
  */
 export function volumeGain(volume: number): number {
   const share = snapSize(VOLUME, volume) / 100;
