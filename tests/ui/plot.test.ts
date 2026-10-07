@@ -270,6 +270,20 @@ describe('closing in on a curve', () => {
     expect(plot((x) => x * x - 2 * x - 3).x).toEqual({ min: -4, max: 6 });
   });
 
+  it('keeps less room around a curve that turns twice, so its turns are not flattened', () => {
+    // x³ − x: roots −1, 0, 1 and turns at ±0.58, about 0.38 off the axis. With three either
+    // side its tails reach ±60 and the turns would sit on a flat line.
+    const cubic = plot((x) => x * x * x - x);
+    expect(cubic.x).toEqual({ min: -2, max: 2 });
+    expect(cubic.y).toEqual({ min: -2, max: 2 });
+    expect(cubic.keyPoints.filter((p) => p.kinds.includes('turning'))).toHaveLength(2);
+    // x⁴ − 5x² + 4, a W: roots ±1 and ±2, turns at (±1.58, −2.25) and (0, 4).
+    const quartic = plot((x) => x ** 4 - 5 * x * x + 4);
+    expect(quartic.x).toEqual({ min: -3, max: 3 });
+    expect(quartic.y.max - quartic.y.min).toBeLessThan(10);
+    expect(quartic.keyPoints).toHaveLength(7);
+  });
+
   it('keeps the whole window for a line, and for a curve that never turns', () => {
     expect(plot((x) => 2 * x + 1).x).toEqual(X_RANGE);
     expect(plot((x) => x + 50).x).toEqual(X_RANGE);

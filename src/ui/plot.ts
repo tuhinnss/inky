@@ -77,6 +77,12 @@ export function plot(f: (x: number) => number | null, x: Range = X_RANGE, sample
 
 /** Room left either side of a curve's key points when the window closes in on them. */
 const FOCUS_ROOM = 3;
+/**
+ * The room left by a curve that turns twice or more, as most cubics and quartics do. They
+ * climb away from their turns far faster than a parabola, and with a parabola's room the
+ * y axis has to take in tails so tall that the turns are flattened into a line.
+ */
+const STEEP_ROOM = 1;
 
 /**
  * The x a fitted window closes in on: its key points, with room either side, when the curve
@@ -90,7 +96,7 @@ export function focusOn(points: readonly KeyPoint[], x: Range): Range | null {
   const xs = points.map((p) => p.x);
   const first = Math.min(...xs);
   const last = Math.max(...xs);
-  const room = Math.max(FOCUS_ROOM, 0.6 * (last - first));
+  const room = turns >= 2 ? STEEP_ROOM : Math.max(FOCUS_ROOM, 0.6 * (last - first));
   const min = Math.max(x.min, Math.floor(first - room));
   const max = Math.min(x.max, Math.ceil(last + room));
   return max - min > 0.8 * (x.max - x.min) ? null : { min, max };

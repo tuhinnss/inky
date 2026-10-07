@@ -155,7 +155,7 @@ conversion and benchmark scripts are in [scripts/model](scripts/model).
 | `npm run dev`            | Start the dev server                                                                                 |
 | `npm run build`          | Type-check, then build to `dist/`                                                                    |
 | `npm run preview`        | Serve the production build locally                                                                   |
-| `npm test`               | Run the 877 unit and integration tests once                                                          |
+| `npm test`               | Run the 878 unit and integration tests once                                                          |
 | `npm run typecheck`      | Type-check without building                                                                          |
 | `npm run lint`           | Lint the source. Fails on `eval` or `new Function`                                                   |
 | `npm run format`         | Format the source with Prettier                                                                      |
