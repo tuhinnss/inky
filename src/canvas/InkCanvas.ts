@@ -96,11 +96,34 @@ const MIN_LOOP_DISTANCE = 3;
 export const SELECTION_PAD = 6;
 /** A press this close outside the box still takes hold of the selection. */
 const GRAB_PAD = SELECTION_PAD + 8;
-const HIGHLIGHTER = 'rgba(255, 229, 102, 0.8)';
 /** A press that moves less than this and lifts sooner than this is a tap. */
 const TAP_TRAVEL = 6;
 const TAP_MS = 350;
-const LASSO_LINE = 'rgba(28, 43, 110, 0.65)';
+
+/**
+ * How the canvas paints. The app sets it for light or dark paper; `src/ui/theme.ts` has
+ * both. Colours are `r, g, b`, for use with varying opacity.
+ */
+export interface CanvasLook {
+  /** The colour a stroke stored in `color` is drawn in. */
+  ink(color: string): string;
+  /** Under the strokes the lasso holds. */
+  highlighter: string;
+  /** The lasso's dashed line, and the box round what it holds. */
+  lasso: string;
+  /** The eraser tip under the pointer: its edge and its fill. */
+  eraserEdge: string;
+  eraserFill: string;
+}
+
+/** Light paper: every stroke in the colour it was written in. */
+const LIGHT_LOOK: CanvasLook = {
+  ink: (color) => color,
+  highlighter: '255, 229, 102',
+  lasso: '28, 43, 110',
+  eraserEdge: '200, 80, 105',
+  eraserFill: '232, 121, 140',
+};
 
 /** The box of a stroke's ink, kept: strokes never change, and every redraw asks. */
 const boxes = new WeakMap<Stroke, Bounds>();
@@ -132,6 +155,7 @@ export class InkCanvas {
   private tool: Tool = 'pen';
   private penWidth: number;
   private inkColor: string;
+  private look = LIGHT_LOOK;
   private eraserRadius: number;
 
   private gesture: Gesture | null = null;
@@ -286,6 +310,13 @@ export class InkCanvas {
   /** Each stroke keeps the colour it was written in, so this changes only the next ones. */
   setInkColor(color: string): void {
     this.inkColor = color;
+  }
+
+  /** Paints everything again for other paper: what is stored does not change. */
+  setLook(look: CanvasLook): void {
+    this.look = look;
+    this.requestFrame('ink');
+    this.requestFrame('live');
   }
 
   setEraserRadius(radius: number): void {
@@ -766,7 +797,7 @@ export class InkCanvas {
   }
 
   private fillStroke(stroke: Stroke): void {
-    this.ink.ctx.fillStyle = stroke.color;
+    this.ink.ctx.fillStyle = this.look.ink(stroke.color);
     this.ink.ctx.fill(strokePath(stroke));
   }
 
@@ -777,7 +808,7 @@ export class InkCanvas {
     const gesture = this.gesture;
 
     if (gesture?.tool === 'pen' && gesture.points.length > 0) {
-      ctx.fillStyle = this.inkColor;
+      ctx.fillStyle = this.look.ink(this.inkColor);
       ctx.fill(livePath(gesture.points, this.penWidth, gesture.simulatePressure));
       return;
     }
@@ -796,10 +827,10 @@ export class InkCanvas {
     if (isEraser(gesture?.tool ?? this.tool) && this.hover) {
       ctx.beginPath();
       ctx.arc(this.hover.x, this.hover.y, this.eraserRadius, 0, Math.PI * 2);
-      ctx.fillStyle = gesture ? 'rgba(232, 121, 140, 0.25)' : 'rgba(232, 121, 140, 0.12)';
+      ctx.fillStyle = `rgba(${this.look.eraserFill}, ${gesture ? 0.25 : 0.12})`;
       ctx.fill();
       ctx.lineWidth = 1.25;
-      ctx.strokeStyle = 'rgba(200, 80, 105, 0.9)';
+      ctx.strokeStyle = `rgba(${this.look.eraserEdge}, 0.9)`;
       ctx.stroke();
     }
   }
@@ -812,12 +843,12 @@ export class InkCanvas {
     ctx.moveTo(loop[0].x, loop[0].y);
     for (const point of loop) ctx.lineTo(point.x, point.y);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(255, 229, 102, 0.16)';
+    ctx.fillStyle = `rgba(${this.look.highlighter}, 0.16)`;
     ctx.fill();
     ctx.setLineDash([5, 4]);
     ctx.lineWidth = 1.5;
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = LASSO_LINE;
+    ctx.strokeStyle = `rgba(${this.look.lasso}, 0.65)`;
     ctx.stroke();
     ctx.restore();
   }
@@ -831,17 +862,17 @@ export class InkCanvas {
     ctx.translate(offset.x, offset.y);
     ctx.lineJoin = 'round';
     ctx.lineWidth = 9;
-    ctx.strokeStyle = HIGHLIGHTER;
+    ctx.strokeStyle = `rgba(${this.look.highlighter}, 0.8)`;
     for (const stroke of this.selection) ctx.stroke(strokePath(stroke));
     for (const stroke of this.selection) {
-      ctx.fillStyle = stroke.color;
+      ctx.fillStyle = this.look.ink(stroke.color);
       ctx.fill(strokePath(stroke));
     }
     const box = this.selectionBox;
     if (box) {
       ctx.setLineDash([5, 4]);
       ctx.lineWidth = 1.25;
-      ctx.strokeStyle = LASSO_LINE;
+      ctx.strokeStyle = `rgba(${this.look.lasso}, 0.65)`;
       ctx.strokeRect(
         box.minX - SELECTION_PAD,
         box.minY - SELECTION_PAD,

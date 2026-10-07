@@ -7,7 +7,8 @@ import { solutionText } from '../app/solve';
 import { compile } from '../math';
 import type { Reading } from '../recognition/interpret';
 import { drawGraph } from './drawGraph';
-import { GRAPHITE, font } from './pencil';
+import { font } from './pencil';
+import { PALETTES, type Theme } from './theme';
 import { graphFrame, plot, type Frame, type Plot, type Range } from './plot';
 import { equationAt, labelFor } from './readings';
 
@@ -154,6 +155,8 @@ export class AnswerOverlay {
 
   /** How far down the graphs reached when last reported. */
   private graphsReach = 0;
+  /** The colours of the paper: everything here is pencilled in its graphite. */
+  private palette = PALETTES.light;
 
   /**
    * @param onGraphsReach told how far down the page the graphs go, whenever that changes,
@@ -254,6 +257,12 @@ export class AnswerOverlay {
     this.draw(performance.now());
   }
 
+  /** Pencils everything again for light or dark paper. */
+  setTheme(theme: Theme): void {
+    this.palette = PALETTES[theme];
+    this.redraw();
+  }
+
   destroy(): void {
     cancelAnimationFrame(this.frame);
     this.shown.clear();
@@ -323,7 +332,7 @@ export class AnswerOverlay {
         const opacity = answerOpacity(equation.confidence) / answerOpacity(1);
         const traced = this.trace?.id === equation.id ? this.trace.x : null;
         const trace = traced === null ? undefined : { x: traced, y: graph.at(traced) };
-        drawGraph(ctx, frame, graph.plot, progress, opacity, trace);
+        drawGraph(ctx, frame, graph.plot, progress, opacity, trace, this.palette);
         if (!(this.drag && isDragged(equation, this.drag)))
           this.graphFrames.set(equation.id, frame);
         placed.push({
@@ -402,7 +411,7 @@ export class AnswerOverlay {
 
     // A doubtful answer is the same answer, written more faintly.
     const sure = isNumber || (solved && equation.solution?.kind !== 'beyond');
-    ctx.fillStyle = `rgba(${GRAPHITE}, ${sure ? answerOpacity(equation.confidence) : 0.78})`;
+    ctx.fillStyle = `rgba(${this.palette.graphite}, ${sure ? answerOpacity(equation.confidence) : 0.78})`;
     // Kalam's digits sit a little above the middle of its line box.
     ctx.fillText(text, x, y + size * 0.06);
     this.answerBoxes.set(equation.id, {
@@ -434,12 +443,12 @@ export class AnswerOverlay {
       const x = (symbol.bounds.minX + symbol.bounds.maxX) / 2;
       const y = symbol.bounds.minY - size * 0.75;
       const half = Math.max(size * 0.45, ctx.measureText(text).width / 2 + size * 0.25);
-      ctx.fillStyle = 'rgba(255, 229, 102, 0.55)';
+      ctx.fillStyle = `rgba(${this.palette.highlighter}, 0.55)`;
       ctx.beginPath();
       ctx.roundRect(x - half, y - size * 0.55, half * 2, size * 1.1, size * 0.2);
       ctx.fill();
       const opacity = reading.confidence < LOW_CONFIDENCE ? 0.45 : 0.9;
-      ctx.fillStyle = `rgba(${GRAPHITE}, ${opacity})`;
+      ctx.fillStyle = `rgba(${this.palette.graphite}, ${opacity})`;
       ctx.fillText(text, x, y + size * 0.06);
     });
     ctx.restore();
@@ -470,7 +479,7 @@ export class AnswerOverlay {
     const y = row.bounds.maxY + row.height * drop;
 
     ctx.save();
-    ctx.strokeStyle = `rgba(${GRAPHITE}, 0.7)`;
+    ctx.strokeStyle = `rgba(${this.palette.graphite}, 0.7)`;
     ctx.lineWidth = 1.5;
     ctx.lineCap = 'round';
     ctx.setLineDash([1, 5]);
@@ -508,7 +517,7 @@ export class AnswerOverlay {
     const noteY = line.column ? line.bounds.maxY + line.height * 0.3 : y + 9;
 
     ctx.save();
-    ctx.strokeStyle = `rgba(${GRAPHITE}, 0.8)`;
+    ctx.strokeStyle = `rgba(${this.palette.graphite}, 0.8)`;
     ctx.lineWidth = 1.5;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
@@ -525,7 +534,7 @@ export class AnswerOverlay {
     const size = Math.max(14, line.height * 0.28);
     ctx.font = font(size);
     ctx.textBaseline = 'top';
-    ctx.fillStyle = `rgba(${GRAPHITE}, 0.8)`;
+    ctx.fillStyle = `rgba(${this.palette.graphite}, 0.8)`;
     const width = ctx.measureText(evaluation.error.message).width;
     // Keep the note on the page even when the fault is near the right edge.
     const x = Math.max(

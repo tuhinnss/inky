@@ -4,7 +4,8 @@
  */
 
 import { formatNumber } from '../math';
-import { GRAPHITE, PAPER, font } from './pencil';
+import { font } from './pencil';
+import { PALETTES, type Palette } from './theme';
 import type { Frame, KeyPoint, Plot, Point } from './plot';
 
 /** How far a tick mark reaches either side of its axis, in CSS pixels. */
@@ -17,6 +18,7 @@ const ARROW = 6;
  * @param opacity how firmly to draw it: fainter when the notebook was unsure of its line.
  * @param trace a point read off the curve where the graph was tapped, if any: its x, and its
  *   y or null where the curve has no value.
+ * @param palette the colours of the paper it is drawn on.
  */
 export function drawGraph(
   ctx: CanvasRenderingContext2D,
@@ -25,7 +27,9 @@ export function drawGraph(
   progress: number,
   opacity = 1,
   trace?: { x: number; y: number | null },
+  palette: Palette = PALETTES.light,
 ): void {
+  const { graphite, paper } = palette;
   const { left, top, width, height } = frame;
   const right = left + width;
   const bottom = top + height;
@@ -45,13 +49,13 @@ export function drawGraph(
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  ctx.strokeStyle = `rgba(${GRAPHITE}, 0.25)`;
+  ctx.strokeStyle = `rgba(${graphite}, 0.25)`;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.rect(left, top, width, height);
   ctx.stroke();
 
-  ctx.strokeStyle = `rgba(${GRAPHITE}, 0.75)`;
+  ctx.strokeStyle = `rgba(${graphite}, 0.75)`;
   ctx.lineWidth = 1.4;
   ctx.beginPath();
   if (xAxis) {
@@ -139,7 +143,7 @@ export function drawGraph(
   }
 
   ctx.font = font(size);
-  ctx.fillStyle = `rgba(${GRAPHITE}, 0.8)`;
+  ctx.fillStyle = `rgba(${graphite}, 0.8)`;
   for (const written of numbers) {
     if (labels.some((label) => overlap(label.box, written.box))) continue;
     ctx.textAlign = written.align;
@@ -160,13 +164,13 @@ export function drawGraph(
   ctx.beginPath();
   ctx.rect(left, top, width, height);
   ctx.clip();
-  ctx.strokeStyle = `rgba(${GRAPHITE}, 0.92)`;
+  ctx.strokeStyle = `rgba(${graphite}, 0.92)`;
   ctx.lineWidth = 2.25;
   ctx.beginPath();
   for (const run of plot.runs) traceRun(ctx, run, until, px, py);
   ctx.stroke();
 
-  ctx.fillStyle = `rgba(${GRAPHITE}, 0.95)`;
+  ctx.fillStyle = `rgba(${graphite}, 0.95)`;
   for (const point of reached) {
     ctx.beginPath();
     ctx.arc(px(point.x), py(point.y), 3.2, 0, Math.PI * 2);
@@ -179,18 +183,18 @@ export function drawGraph(
   ctx.textBaseline = 'top';
   for (const label of labels) {
     const { box } = label;
-    ctx.fillStyle = PAPER;
+    ctx.fillStyle = paper;
     ctx.globalAlpha = 0.85 * opacity;
     ctx.beginPath();
     ctx.rect(box.left, box.top, box.right - box.left, box.bottom - box.top);
     ctx.fill();
     ctx.globalAlpha = opacity;
-    ctx.fillStyle = `rgba(${GRAPHITE}, 0.9)`;
+    ctx.fillStyle = `rgba(${graphite}, 0.9)`;
     ctx.fillText(label.text, label.x, label.y);
   }
 
   if (trace && progress >= 1) {
-    markReading(ctx, trace, frame, { px, py, xLine, yLine }, labelSize, opacity);
+    markReading(ctx, trace, frame, { px, py, xLine, yLine }, labelSize, opacity, palette);
   }
   ctx.restore();
 }
@@ -212,13 +216,15 @@ function markReading(
   },
   size: number,
   opacity: number,
+  palette: Palette,
 ): void {
+  const { graphite, paper } = palette;
   const x = at.px(trace.x);
   const y = trace.y === null ? null : at.py(trace.y);
   const inside = y !== null && y >= frame.top && y <= frame.top + frame.height;
   const text =
     trace.y === null ? `no y at x = ${short(trace.x)}` : `(${short(trace.x)}, ${short(trace.y)})`;
-  ctx.strokeStyle = `rgba(${GRAPHITE}, 0.6)`;
+  ctx.strokeStyle = `rgba(${graphite}, 0.6)`;
   ctx.lineWidth = 1.2;
   ctx.setLineDash([3, 4]);
   ctx.beginPath();
@@ -234,7 +240,7 @@ function markReading(
   ctx.stroke();
   ctx.setLineDash([]);
   if (inside) {
-    ctx.fillStyle = `rgba(${GRAPHITE}, 1)`;
+    ctx.fillStyle = `rgba(${graphite}, 1)`;
     ctx.beginPath();
     ctx.arc(x, y, 4, 0, Math.PI * 2);
     ctx.fill();
@@ -244,13 +250,13 @@ function markReading(
   const textTop = inside ? y - 8 - size : frame.top + 4;
   const left = Math.max(frame.left + 2, Math.min(x + 8, frame.left + frame.width - width - 2));
   const top = Math.max(frame.top + 2, Math.min(textTop, frame.top + frame.height - size - 2));
-  ctx.fillStyle = PAPER;
+  ctx.fillStyle = paper;
   ctx.globalAlpha = 0.9 * opacity;
   ctx.beginPath();
   ctx.rect(left - 2, top - 1, width + 4, size + 2);
   ctx.fill();
   ctx.globalAlpha = opacity;
-  ctx.fillStyle = `rgba(${GRAPHITE}, 1)`;
+  ctx.fillStyle = `rgba(${graphite}, 1)`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
   ctx.fillText(text, left, top);

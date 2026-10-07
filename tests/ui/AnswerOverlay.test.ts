@@ -14,6 +14,7 @@ import {
   roomTaken,
 } from '../../src/ui/AnswerOverlay';
 import { graphFrame } from '../../src/ui/plot';
+import { PALETTES, type Theme } from '../../src/ui/theme';
 import { ink, inkColumn, strokesOf, turned } from '../fixtures/ink';
 
 /** An equation as the pipeline would hand it over, read with the given confidence. */
@@ -57,6 +58,8 @@ interface Text {
   y: number;
   /** How opaque it was drawn: the alpha of the fill colour. */
   opacity: number;
+  /** The colour it was drawn in, as `r, g, b`. */
+  color: string;
   /** The clip in force when the text was drawn. */
   clip: { left: number; right: number } | undefined;
 }
@@ -125,7 +128,9 @@ function fakeLayer(width: number) {
       const left = ctx.textAlign === 'center' ? x - w / 2 : x;
       // The colour's own opacity, and that of everything drawn at the time.
       const opacity = Number(/,\s*([\d.]+)\)$/.exec(ctx.fillStyle)?.[1] ?? 1) * ctx.globalAlpha;
-      texts.push({ text, left, right: left + w, y, opacity, clip: clips[clips.length - 1] });
+      const color = /^rgba\((.*),\s*[\d.]+\)$/.exec(ctx.fillStyle)?.[1] ?? ctx.fillStyle;
+      const clip = clips[clips.length - 1];
+      texts.push({ text, left, right: left + w, y, opacity, color, clip });
     },
   };
 
@@ -548,6 +553,27 @@ describe('a graph', () => {
     overlay.setEquations([{ ...equation('18+4='), id: 1 }]);
     overlay.redraw();
     expect(fake.texts.map((t) => t.text)).toEqual(['22']);
+  });
+});
+
+describe('on dark paper', () => {
+  /** The colours of everything written for `equations`, once the paper is `theme`. */
+  function coloursOn(theme: Theme, equations: Equation[]): Set<string> {
+    const { layer, texts } = fakeLayer(1200);
+    const overlay = new AnswerOverlay(layer);
+    overlay.setEquations(equations);
+    overlay.setTheme(theme);
+    return new Set(texts.map((text) => text.color));
+  }
+
+  it('pencils the answer in the graphite of the dark paper', () => {
+    expect(coloursOn('dark', [equation('18+4×3=')])).toEqual(new Set([PALETTES.dark.graphite]));
+    expect(coloursOn('light', [equation('18+4×3=')])).toEqual(new Set([PALETTES.light.graphite]));
+  });
+
+  it('numbers and labels a graph in it too', () => {
+    const graph = evaluatePage([equation('y=2×+1')])[0];
+    expect(coloursOn('dark', [graph])).toEqual(new Set([PALETTES.dark.graphite]));
   });
 });
 
