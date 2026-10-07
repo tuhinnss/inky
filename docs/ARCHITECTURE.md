@@ -983,6 +983,35 @@ The third tool selects strokes to move or delete ([`selection.ts`](../src/ink/se
 
 It works with a finger, a stylus or a mouse, and two fingers still scroll.
 
+### Light and dark paper
+
+The notebook has a dark theme of its own: slate paper with faint blue squares, a dusky margin
+rule, ink in light colours and answers in light pencil ([`theme.ts`](../src/ui/theme.ts)). It
+follows the device's light or dark setting, and changes when the device does, until the moon in
+the margin is pressed; from then on the choice is kept in this browser's storage.
+
+- **Where the colours live.** The page's colours are CSS custom properties, and a second set in
+  `base.css` takes over when the root element has `data-theme="dark"`. The canvases cannot read
+  CSS cheaply while they draw, so the colours they paint with, the paper, the graphite, the
+  highlighter, the lasso and the eraser, are listed again in `theme.ts`; a test reads `base.css`
+  and fails if the two lists disagree. Answers, notes, readings and graphs are drawn with the
+  palette they are given, and switching redraws them once.
+- **Ink.** A stroke stores the colour it was written in, and keeps it whatever the theme. Each of
+  the six inks has a light partner it is drawn in on dark paper, as a notes app turns black ink
+  white at night, so switching back and forth changes nothing that is stored or read: recognition
+  never sees colour at all. The pen's swatches show the inks as they come out on the paper in use.
+  `src/canvas` depends on nothing in `src/ui`, so the app hands the ink canvas a _look_, the
+  colour each stored ink is drawn in and the colours of the lasso, highlighter and eraser tip,
+  rather than the canvas reading the theme.
+- **Readable.** Every ink and the pencil grey have a contrast of at least 4.5 against both papers,
+  checked by tests, and the inks stay distinct from the pencil, so what you wrote and what the
+  notebook worked out never look alike. Highlighter cannot darken dark paper, so it becomes an
+  olive laid under the ink instead of a yellow multiplied over it.
+- **No flash.** A few lines of script in `index.html` put the theme on the page before the first
+  paint, from the stored choice or the device's setting, so dark paper never flashes white while
+  the app loads. `color-scheme` then says the page has a light and a dark form, so browsers that
+  darken pages by themselves leave it alone, and the browser's bar takes the colour of the paper.
+
 ## 5. Keeping the main thread free
 
 The frame budget at 60 FPS is 16.7 ms. Three mechanisms keep recognition out of it.
@@ -1258,7 +1287,7 @@ What makes that hold:
 
 ## 9. Tests
 
-882 tests in 42 files, run with Vitest in Node. `npm test` takes about two seconds.
+899 tests in 43 files, run with Vitest in Node. `npm test` takes about two seconds.
 
 | Area                  | Tests | What is covered                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | --------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1283,6 +1312,7 @@ What makes that hold:
 | Lasso                 | 21    | Point in a loop, the loop closing itself, which strokes a loop takes, moving strokes without changing how they look, the box round a selection, and where its Delete button goes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Seeing what was read  | 10    | Which symbol's ink a tap is on and not the empty corner of its box, which sum a tap on ink or on an answer points at, taps on a line written at an angle, and how symbols are labelled                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | Sound and vibration   | 35    | When a cue is due and which one, the quiet starting volume, one cue for many lines, the same answer written again after it was rubbed out, loudness from pen speed, the volume curve and every sound through it, the settings kept, snapped and with storage blocked, nothing before the page is touched, silence at volume 0, vibration on its own switch, browsers without audio or vibration                                                                                                                                                                                                                                                                                                                                                    |
+| Light and dark paper  | 17    | Following the device until a theme is chosen, keeping the choice and working with storage blocked, the page and the canvas palette agreeing, every ink and the pencil readable on both papers, each ink's partner on dark paper, and answers and graphs pencilled in the dark graphite                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | Page snapshots        | 22    | Saving a page of ink and its readings, replaying it to the same symbols, rejecting damaged files                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Evaluation data       | 14    | Reading pen trajectory files and MathWriting inks for the real-handwriting measurements in section 8, and setting one writer's `÷` into another's expression                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
