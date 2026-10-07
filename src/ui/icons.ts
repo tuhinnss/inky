@@ -50,6 +50,8 @@ export const icons = {
   clear: svg(
     '<path d="M6 3h8l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/>',
   ),
+  /** A crescent moon, for dark paper. */
+  moon: svg('<path d="M19.5 14.6A7.5 7.5 0 0 1 9.4 4.5a7.8 7.8 0 1 0 10.1 10.1z"/>'),
 } as const;
 
 /**

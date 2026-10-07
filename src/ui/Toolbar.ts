@@ -1,9 +1,10 @@
 import type { Tool } from '../canvas/InkCanvas';
 import { VOLUME, volumeLabel } from './cues';
 import { icons, penSample } from './icons';
-import { INKS } from './inks';
+import { INKS, inkOnPaper } from './inks';
 import { buttonFor, press, type Eraser, type MenuName, type ToolButton } from './menus';
 import { ERASER_SIZE, PEN_SIZE, placePanel, sizeLabel, type SizeRange } from './sizes';
+import type { Theme } from './theme';
 
 export interface ToolbarState {
   tool: Tool;
@@ -21,6 +22,8 @@ export interface ToolbarState {
   vibration: boolean;
   /** Whether the device can vibrate for a web page at all. The switch is hidden if not. */
   canVibrate: boolean;
+  /** The paper: the inks are shown as they look on it. */
+  theme: Theme;
 }
 
 export interface ToolbarActions {
@@ -35,6 +38,8 @@ export interface ToolbarActions {
   setVibration(on: boolean): void;
   /** Plays a sound at the volume set, when the slider is let go. */
   previewSound(): void;
+  /** Turns the paper from light to dark, or back. */
+  toggleTheme(): void;
 }
 
 const ERASERS: ReadonlyArray<{ tool: Eraser; label: string; shortcut: string; icon: string }> = [
@@ -77,6 +82,7 @@ export class Toolbar {
   private readonly undoButton: HTMLButtonElement;
   private readonly redoButton: HTMLButtonElement;
   private readonly clearButton: HTMLButtonElement;
+  private readonly themeButton: HTMLButtonElement;
   private readonly vibrationSwitch: HTMLInputElement;
   private readonly abort = new AbortController();
 
@@ -108,7 +114,9 @@ export class Toolbar {
     edits.append(this.undoButton, this.redoButton, this.clearButton);
 
     const settings = this.group('Settings');
-    settings.append(this.menus.sound.button, this.menus.sound.panel);
+    // On or off, like a tool in hand: highlighted while the paper is dark.
+    this.themeButton = this.button(icons.moon, 'Dark paper', '', () => actions.toggleTheme());
+    settings.append(this.themeButton, this.menus.sound.button, this.menus.sound.panel);
 
     this.element.append(tools, edits, settings);
 
@@ -135,18 +143,23 @@ export class Toolbar {
 
     this.showSize(this.menus.pen, state.penWidth);
     this.showSize(this.menus.eraser, state.eraserSize);
-    for (const [value, input] of this.swatches) input.checked = value === state.penColor;
+    for (const [value, input] of this.swatches) {
+      input.checked = value === state.penColor;
+      // Each swatch is the colour the ink comes out in on this paper.
+      input.parentElement!.style.setProperty('--swatch', inkOnPaper(value, state.theme));
+    }
     for (const [tool, input] of this.eraserModes) input.checked = tool === state.eraser;
     this.showEraser(state.eraser);
 
     // The pen icon, the sample line and the eraser tip all read these.
-    this.element.style.setProperty('--pen-color', state.penColor);
+    this.element.style.setProperty('--pen-color', inkOnPaper(state.penColor, state.theme));
     this.element.style.setProperty('--pen-size', `${state.penWidth}px`);
     this.element.style.setProperty('--eraser-size', `${state.eraserSize}px`);
 
     this.undoButton.disabled = !state.canUndo;
     this.redoButton.disabled = !state.canRedo;
     this.clearButton.disabled = !state.canClear;
+    this.themeButton.setAttribute('aria-pressed', String(state.theme === 'dark'));
     this.showVolume(state.volume);
     this.vibrationSwitch.checked = state.vibration;
     this.vibrationSwitch.closest('label')!.hidden = !state.canVibrate;

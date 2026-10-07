@@ -1,14 +1,22 @@
-import { InkCanvas, type Tool } from '../canvas/InkCanvas';
+import { InkCanvas, type CanvasLook, type Tool } from '../canvas/InkCanvas';
 import { PageStack } from '../canvas/PageStack';
 import { History, StrokeEdit, StrokeStore } from '../ink';
 import { RecognitionClient } from '../recognition/RecognitionClient';
 import { AnswerOverlay } from '../ui/AnswerOverlay';
 import { CueTracker } from '../ui/cues';
 import { Feedback } from '../ui/Feedback';
-import { DEFAULT_INK, inkFor } from '../ui/inks';
+import { DEFAULT_INK, inkFor, inkOnPaper } from '../ui/inks';
 import type { Eraser } from '../ui/menus';
 import { SelectionBar } from '../ui/SelectionBar';
 import { ERASER_SIZE, PEN_SIZE, snapSize, stepSize } from '../ui/sizes';
+import {
+  applyTheme,
+  loadThemeChoice,
+  PALETTES,
+  saveThemeChoice,
+  themeFor,
+  type Theme,
+} from '../ui/theme';
 import { Toolbar } from '../ui/Toolbar';
 import type { Equation } from './equations';
 import { RecognitionPipeline, type PipelineStats } from './RecognitionPipeline';
@@ -43,6 +51,9 @@ export class App {
   private penColor = DEFAULT_INK;
   /** Diameter of the eraser tip, shared by both erasers. */
   private eraserSize = ERASER_SIZE.initial;
+  /** Whether the device itself is set to dark. Followed until a theme is chosen here. */
+  private readonly deviceDark = window.matchMedia('(prefers-color-scheme: dark)');
+  private theme: Theme = themeFor(loadThemeChoice(), this.deviceDark.matches);
 
   constructor(root: HTMLElement) {
     this.notebook = document.createElement('div');
@@ -65,6 +76,11 @@ export class App {
         this.refresh();
       },
       previewSound: () => this.feedback.preview(),
+      toggleTheme: () => {
+        const theme = this.theme === 'dark' ? 'light' : 'dark';
+        saveThemeChoice(theme);
+        this.setTheme(theme);
+      },
     });
 
     const wordmark = document.createElement('span');
@@ -145,6 +161,15 @@ export class App {
       }),
     );
 
+    // index.html has already put the theme on the page, before the first paint; the
+    // canvases learn it here. Until one is chosen, the paper follows the device.
+    this.setTheme(this.theme);
+    const followDevice = (): void => {
+      if (loadThemeChoice() === null) this.setTheme(themeFor(null, this.deviceDark.matches));
+    };
+    this.deviceDark.addEventListener('change', followDevice);
+    this.cleanup.push(() => this.deviceDark.removeEventListener('change', followDevice));
+
     // Canvas text does not wait for web fonts. Answers drawn before Kalam has loaded
     // would use the fallback face, so redraw once it arrives.
     void document.fonts.load('300 32px Kalam').then(() => this.overlay.redraw());
@@ -202,6 +227,16 @@ export class App {
     this.refresh();
   }
 
+  /** Light or dark paper: the page, the ink on it, and what the notebook writes back. */
+  private setTheme(theme: Theme): void {
+    this.theme = theme;
+    applyTheme(document.documentElement, theme);
+    const look: CanvasLook = { ...PALETTES[theme], ink: (color) => inkOnPaper(color, theme) };
+    this.canvas.setLook(look);
+    this.overlay.setTheme(theme);
+    this.refresh();
+  }
+
   /** Changes the colour of the strokes still to be written. Those on the page keep theirs. */
   private setPenColor(color: string): void {
     this.penColor = inkFor(color).value;
@@ -247,6 +282,7 @@ export class App {
       volume: this.feedback.volume,
       vibration: this.feedback.vibration,
       canVibrate: this.feedback.canVibrate,
+      theme: this.theme,
     });
   }
 
