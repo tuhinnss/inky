@@ -226,6 +226,19 @@ describe('the key points of a curve', () => {
     expect(keys((x) => x + 50)).toEqual(['(0, 50) y-intercept']);
   });
 
+  it('marks roots that fall exactly on samples, however many there are', () => {
+    // −1, 0 and 1 are all sample points of the window: three exact zeros, not a flat stretch.
+    expect(keys((x) => x * x * x - x).filter((key) => key.includes('root'))).toEqual([
+      '(-1, 0) root',
+      '(0, 0) root+y-intercept',
+      '(1, 0) root',
+    ]);
+    const roots = plot((x) => x ** 4 - 5 * x * x + 4).keyPoints.filter((p) =>
+      p.kinds.includes('root'),
+    );
+    expect(roots.map((p) => p.x).sort((a, b) => a - b)).toEqual([-2, -1, 1, 2]);
+  });
+
   it('marks no roots on a curve that is zero all along', () => {
     expect(keys((x) => x - x)).toEqual(['(0, 0) y-intercept']);
   });

@@ -179,26 +179,25 @@ function keyPointsOf(
     found.push({ x: tidy(point.x), y: tidy(point.y), kinds: [kind], slope, bend });
   };
 
-  // Roots. A curve that is zero over a stretch, as x − x is, has no roots worth marking.
-  const zeros = points.filter((p) => p?.y === 0).length;
-  if (zeros <= 2) {
-    for (let i = 0; i < points.length; i++) {
-      const b = points[i];
-      if (!b) continue;
-      const a = points[i - 1];
-      const slope = a ? b.y - a.y : (points[i + 1]?.y ?? b.y) - b.y;
-      if (b.y === 0) {
-        add(b, 'root', slope);
-        continue;
-      }
-      if (!a || a.y === 0 || Math.sign(a.y) === Math.sign(b.y)) continue;
-      const root = bisect(f, a.x, b.x);
-      if (root === null) continue;
-      const value = f(root);
-      // A sign change across a pole closes in on a huge value, not on zero.
-      if (value === null || Math.abs(value) > 1e-6 * (1 + height)) continue;
-      add({ x: root, y: 0 }, 'root', slope);
+  // Roots. A curve that is zero over a stretch, as x − x is, has no roots worth marking
+  // there, so a sample that is exactly zero is a root only when its neighbours are not.
+  // Whole-number roots, as the −1, 0 and 1 of x × x × x − x, land on samples.
+  for (let i = 0; i < points.length; i++) {
+    const b = points[i];
+    if (!b) continue;
+    const a = points[i - 1];
+    const slope = a ? b.y - a.y : (points[i + 1]?.y ?? b.y) - b.y;
+    if (b.y === 0) {
+      if (a?.y !== 0 && points[i + 1]?.y !== 0) add(b, 'root', slope);
+      continue;
     }
+    if (!a || a.y === 0 || Math.sign(a.y) === Math.sign(b.y)) continue;
+    const root = bisect(f, a.x, b.x);
+    if (root === null) continue;
+    const value = f(root);
+    // A sign change across a pole closes in on a huge value, not on zero.
+    if (value === null || Math.abs(value) > 1e-6 * (1 + height)) continue;
+    add({ x: root, y: 0 }, 'root', slope);
   }
 
   const atZero = f(0);
