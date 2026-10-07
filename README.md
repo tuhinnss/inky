@@ -14,6 +14,9 @@ Built for the Inter IIT Tech Meet 15.0 Bootcamp, Phase 1 Software problem statem
 
 **Live demo:** https://tuhinnss.github.io/inky/
 
+**One-minute video:** [docs/demo.mp4](docs/demo.mp4): sums, editing by scribbling, `x`, powers,
+graphs, solving and column sums, in the app as it is (written with synthetic handwriting, no sound).
+
 ## Quick start
 
 Requires Node.js 20.19 or later (22.12 or later on the 22 line).
