@@ -1,5 +1,5 @@
 import { unionBounds, type Bounds, type Stroke } from '../ink';
-import { lineHeight, measure, type StrokeMetrics } from './metrics';
+import { isFlat, lineHeight, measure, type StrokeMetrics } from './metrics';
 
 /** Strokes this small (in CSS px) still get a usable vertical band and reach. */
 const MIN_REACH = 20;
@@ -110,7 +110,8 @@ function joinFragments(clusters: Cluster[]): Cluster[] {
     merged = false;
     outer: for (let i = 0; i < clusters.length; i++) {
       for (let j = i + 1; j < clusters.length; j++) {
-        if (!sameRow(clusters[i], clusters[j])) continue;
+        const [a, b] = [clusters[i], clusters[j]];
+        if (!sameRow(a, b) && !raisedOnto(a, b) && !raisedOnto(b, a)) continue;
         clusters[i] = toCluster([...clusters[i].members, ...clusters[j].members]);
         clusters.splice(j, 1);
         merged = true;
@@ -119,6 +120,49 @@ function joinFragments(clusters: Cluster[]): Cluster[] {
     }
   }
   return clusters;
+}
+
+/** A power is this tall at most, as a share of the line's digits: a quarter of real ones are as tall. */
+const POWER_HEIGHT = 1;
+/** ...and this tall at least: a dot or a stray mark is not a power. */
+const POWER_MIN_HEIGHT = 0.25;
+/** The foot of a power is at most this far above the top of the line, in digit-heights... */
+const FOOT_ABOVE = 0.6;
+/** ...and at most this far down into it, as the foot of a raised digit is in real handwriting. */
+const FOOT_INTO = 0.55;
+/** A power starts at most this many digit-heights after the right edge of its base. */
+const POWER_GAP = 0.6;
+
+/**
+ * Is `power` a power written high beside a symbol of `line`, as in x³? People often raise
+ * a power so far that most of it, or all of it, is above the line: its centre is then
+ * outside the line's band and the passes above leave it on its own, a line by itself that
+ * means nothing. On MathWriting nearly a quarter of the expressions with powers were split
+ * up this way. A power is no taller than the line's digits, its foot is near the top of the
+ * line, and it starts just after a stroke of the line with nothing of the line under its
+ * start. A row of a column sum has digits of the row below under it. Whether it really is a
+ * power is for the reading of the line to decide (`powers.ts`).
+ */
+function raisedOnto(line: Cluster, power: Cluster): boolean {
+  const { minY: top, height } = line;
+  if (power.height > POWER_HEIGHT * height || power.height < POWER_MIN_HEIGHT * height) {
+    return false;
+  }
+  const foot = power.maxY;
+  if (foot < top - FOOT_ABOVE * height || foot > top + FOOT_INTO * height) return false;
+  if (power.minY >= top) return false;
+  // Nothing of the line sits under the start of the power, as a digit of a row below would.
+  const start = power.minX + 0.6 * (power.maxX - power.minX);
+  if (line.members.some((m) => !isFlat(m) && m.centreX > power.minX && m.centreX < start)) {
+    return false;
+  }
+  // The base: a stroke ending just before the power starts, its top not far below the foot.
+  return line.members.some(
+    (m) =>
+      m.maxX <= power.minX + 0.3 * height &&
+      power.minX - m.maxX <= POWER_GAP * height &&
+      m.minY - foot <= POWER_GAP * height,
+  );
 }
 
 function sameRow(a: Cluster, b: Cluster): boolean {

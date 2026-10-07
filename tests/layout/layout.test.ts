@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createStroke, eraseFromStroke, type Stroke } from '../../src/ink';
 import { groupIntoLines, layoutPage, segmentLine, type Line } from '../../src/layout';
-import { ink, shuffled, strokesOf, type InkSymbol } from '../fixtures/ink';
+import { after, ink, shuffled, strokesOf, type InkSymbol } from '../fixtures/ink';
 
 /** The stroke ids of each symbol, as sets, in left-to-right order. */
 const grouping = (line: Line): number[][] =>
@@ -151,6 +151,25 @@ describe('grouping strokes into lines', () => {
     expect(lines).toHaveLength(2);
     expect(grouping(lines[0])).toEqual(expected(first));
     expect(grouping(lines[1])).toEqual(expected(second));
+  });
+
+  it('keeps a power written high above its line with that line', () => {
+    // The 2 of 4 + 3² written so high that its foot does not reach the top of the 3: its
+    // centre is outside the line, which once left it as a line of its own.
+    const line = ink('4+3', { x: 40, y: 100, size: 80 });
+    const power = ink('2', { x: after(line, 6), y: 50, size: 45, seed: 3 });
+    const lines = layoutPage([...strokesOf(line), ...strokesOf(power)]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0].symbols).toHaveLength(4);
+  });
+
+  it('keeps a power written high in the middle of its line', () => {
+    const base = ink('7', { x: 40, y: 100, size: 80 });
+    const power = ink('5', { x: after(base, 6), y: 55, size: 50, seed: 4 });
+    const rest = ink('+1=', { x: after(power, 14), y: 100, size: 80, seed: 5 });
+    const lines = layoutPage([...strokesOf(base), ...strokesOf(power), ...strokesOf(rest)]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0].symbols).toHaveLength(5); // 7 5 + 1 =
   });
 
   it('returns lines top to bottom whatever order they were written in', () => {

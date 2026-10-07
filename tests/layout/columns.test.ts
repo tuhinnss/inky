@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createStroke, type Stroke } from '../../src/ink';
 import { layoutPage, type Line } from '../../src/layout';
-import { ink, inkColumn, shuffled, strokesOf } from '../fixtures/ink';
+import { after, ink, inkColumn, shuffled, strokesOf } from '../fixtures/ink';
 
 const columnsOf = (lines: readonly Line[]) => lines.filter((line) => line.column);
 const symbolsPerRow = (line: Line) => line.column?.rows.map((row) => row.symbols.length);
@@ -206,6 +206,23 @@ describe('a column sum among other writing', () => {
     const last = line.column?.rows[2];
     expect(last?.symbols).toHaveLength(2);
     expect(last!.symbols[0].bounds.maxX).toBeLessThan(350); // the "+" is clear of the rule
+  });
+
+  it('keeps a smaller row written close above a wider one as a row, not a power', () => {
+    // An 8 written smaller than the 17 under it, with little room between them.
+    const ending = (text: string, size: number, y: number, seed: number) => {
+      const width = after(ink(text, { x: 0, size, seed }), 0);
+      return ink(text, { x: 400 - width, y, size, seed });
+    };
+    const top = ending('8', 64, 60, 1);
+    const below = ending('+17', 80, 60 + 64 + 8, 2);
+    const [line, ...others] = layoutPage([
+      ...strokesOf(top),
+      ...strokesOf(below),
+      bar(290, 420, 60 + 64 + 8 + 80 + 16),
+    ]);
+    expect(others).toHaveLength(0);
+    expect(symbolsPerRow(line)).toEqual([1, 3]);
   });
 
   it('does not swallow an equation written above it', () => {
