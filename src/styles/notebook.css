@@ -65,7 +65,7 @@
   inset: 9px 3px;
   border-radius: 3px 5px 4px 6px;
   background: var(--highlighter);
-  mix-blend-mode: multiply;
+  mix-blend-mode: var(--highlighter-blend);
   transform: rotate(-4deg) scaleX(0);
   transform-origin: left center;
   transition: transform 140ms ease-out;
@@ -130,8 +130,8 @@
   border-radius: 3px 7px 4px 8px;
   background: var(--paper);
   box-shadow:
-    0 8px 22px rgb(28 43 110 / 14%),
-    0 1px 2px rgb(28 43 110 / 12%);
+    0 8px 22px var(--shadow-far),
+    0 1px 2px var(--shadow-near);
   font-family: var(--hand);
   font-weight: 300;
   color: var(--graphite);
@@ -153,9 +153,9 @@
   display: block;
   width: var(--eraser-size);
   height: var(--eraser-size);
-  border: 1.25px solid rgb(200 80 105 / 90%);
+  border: 1.25px solid var(--eraser-edge);
   border-radius: 50%;
-  background: rgb(232 121 140 / 14%);
+  background: var(--eraser-fill);
 }
 
 /* The radio buttons are real and keep working with the keyboard, but are not seen: the
@@ -232,7 +232,7 @@
   inset: 4px 2px;
   border-radius: 3px 5px 4px 6px;
   background: var(--highlighter);
-  mix-blend-mode: multiply;
+  mix-blend-mode: var(--highlighter-blend);
   transform: rotate(-3deg) scaleX(0);
   transform-origin: left center;
   transition: transform 140ms ease-out;
@@ -342,8 +342,8 @@
   border-radius: 3px 7px 4px 8px;
   background: var(--paper);
   box-shadow:
-    0 6px 16px rgb(28 43 110 / 14%),
-    0 1px 2px rgb(28 43 110 / 12%);
+    0 6px 16px var(--shadow-far),
+    0 1px 2px var(--shadow-near);
 }
 
 .selection-bar[hidden] {
@@ -416,7 +416,7 @@
   background-color: var(--paper);
   background-image: var(--ruling);
   background-size: var(--grid) var(--grid);
-  box-shadow: 0 1px 3px rgb(28 43 110 / 12%);
+  box-shadow: 0 1px 3px var(--shadow-near);
 }
 
 .page-number {
